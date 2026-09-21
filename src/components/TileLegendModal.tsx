@@ -8,6 +8,7 @@ interface TileLegendModalProps {
   isColorOnlyMode: boolean;
   onToggleColorOnlyMode: () => void;
   onSelectTerrain?: (terrainId: string) => void;
+  onFocusTile?: (x: number, y: number) => void;
   onClose: () => void;
 }
 
@@ -16,9 +17,23 @@ export const TileLegendModal: React.FC<TileLegendModalProps> = ({
   isColorOnlyMode,
   onToggleColorOnlyMode,
   onSelectTerrain,
+  onFocusTile,
   onClose,
 }) => {
   const totalTiles = Math.max(1, map.tiles.length);
+
+  const namedTiles = useMemo(() => {
+    const list: { x: number; y: number; label: string; terrain: string; obj: string }[] = [];
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const t = map.tiles[y * map.width + x];
+        if (t && t.label) {
+          list.push({ x, y, label: t.label, terrain: t.terrain, obj: t.obj });
+        }
+      }
+    }
+    return list;
+  }, [map.tiles, map.width, map.height]);
 
   const terrainStats = useMemo(() => {
     const counts = new Map<string, number>();
@@ -175,6 +190,54 @@ export const TileLegendModal: React.FC<TileLegendModalProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Named Locations & POIs Section */}
+          {namedTiles.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-3 flex items-center justify-between">
+                <span>Named Tiles & Locations</span>
+                <span className="text-slate-400 font-mono text-[11px]">{namedTiles.length} named</span>
+              </h3>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {namedTiles.map((nt, idx) => {
+                  const tDef = getTerrain(nt.terrain);
+                  const oDef = getMapObject(nt.obj);
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => {
+                        if (onFocusTile) {
+                          onFocusTile(nt.x, nt.y);
+                          onClose();
+                        }
+                      }}
+                      className={`flex items-center justify-between p-2 rounded-lg border border-slate-800 bg-slate-800/40 hover:bg-slate-800/80 transition-colors ${
+                        onFocusTile ? 'cursor-pointer hover:border-indigo-500/50' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-5 h-5 rounded-xs border shrink-0 flex items-center justify-center text-xs"
+                          style={{ backgroundColor: tDef.baseColor, borderColor: tDef.detailColor }}
+                        >
+                          {oDef?.iconEmoji}
+                        </div>
+                        <span className="text-xs font-semibold text-slate-100 truncate">
+                          {nt.label}
+                        </span>
+                        <span className="text-[11px] text-slate-500 truncate">
+                          ({tDef.title.split('/')[0].trim()})
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono text-indigo-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">
+                        X:{nt.x} Y:{nt.y}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

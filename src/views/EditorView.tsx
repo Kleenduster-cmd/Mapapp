@@ -18,14 +18,32 @@ import {
   Hand,
   Edit,
   Trash,
+  Tag,
+  Plus,
+  Sparkles,
 } from 'lucide-react';
-import { GridMap, EditorTool, GridTile, TileMutation } from '../types';
-import { TERRAIN_TYPES, MAP_OBJECTS, getTerrain, getMapObject } from '../constants/tiles';
+import { GridMap, EditorTool, GridTile, TileMutation, TerrainDef, MapObjectDef } from '../types';
+import {
+  TERRAIN_TYPES,
+  MAP_OBJECTS,
+  getTerrain,
+  getMapObject,
+  registerCustomTerrain,
+  registerCustomObject,
+} from '../constants/tiles';
 import { drawTile } from '../utils/canvasRenderer';
+import {
+  getStoredCustomTerrains,
+  saveStoredCustomTerrains,
+  getStoredCustomObjects,
+  saveStoredCustomObjects,
+} from '../utils/storage';
 import { TileLegendModal } from '../components/TileLegendModal';
 import { ExportModal } from '../components/ExportModal';
 import { ResizeMapModal } from '../components/ResizeMapModal';
 import { RenameModal } from '../components/RenameModal';
+import { NameTileModal } from '../components/NameTileModal';
+import { AddCustomTileModal } from '../components/AddCustomTileModal';
 
 interface EditorViewProps {
   initialMap: GridMap;
@@ -54,7 +72,21 @@ export const EditorView: React.FC<EditorViewProps> = ({
   const [zoom, setZoom] = useState<number>(1);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [showGrid, setShowGrid] = useState<boolean>(true);
+  const [showLabels, setShowLabels] = useState<boolean>(true);
   const [isColorOnlyMode, setIsColorOnlyMode] = useState<boolean>(false);
+
+  // Custom tiles and objects
+  const [customTerrains, setCustomTerrains] = useState<TerrainDef[]>(() => getStoredCustomTerrains());
+  const [customObjects, setCustomObjects] = useState<MapObjectDef[]>(() => getStoredCustomObjects());
+
+  // Naming & Custom Tile modals
+  const [namingTileTarget, setNamingTileTarget] = useState<{
+    x: number;
+    y: number;
+    tile: GridTile;
+  } | null>(null);
+  const [showAddCustomTileModal, setShowAddCustomTileModal] = useState<boolean>(false);
+  const [addCustomTileInitialTab, setAddCustomTileInitialTab] = useState<'terrain' | 'object'>('terrain');
 
   // Hover coordinate state
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(null);
@@ -156,7 +188,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
         }
 
         const tile = map.tiles[y * map.width + x] || { terrain: 'grass', obj: '' };
-        drawTile(ctx, tile, drawX, drawY, effectiveCellSize, showGrid, isColorOnlyMode);
+        drawTile(ctx, tile, drawX, drawY, effectiveCellSize, showGrid, isColorOnlyMode, showLabels);
       }
     }
 
@@ -358,6 +390,65 @@ export const EditorView: React.FC<EditorViewProps> = ({
     updateMapState({ ...map, tiles: newTiles, updatedAt: Date.now() });
   };
 
+  // Center pan view on specific tile coordinate
+  const focusOnTile = (x: number, y: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const effectiveCellSize = baseCellSize * zoom;
+    const mapPixelW = map.width * effectiveCellSize;
+    const mapPixelH = map.height * effectiveCellSize;
+    const centerOffsetX = (width - mapPixelW) / 2;
+    const centerOffsetY = (height - mapPixelH) / 2;
+
+    const tileCenterX = centerOffsetX + (x + 0.5) * effectiveCellSize;
+    const tileCenterY = centerOffsetY + (y + 0.5) * effectiveCellSize;
+
+    setPanOffset({
+      x: width / 2 - tileCenterX,
+      y: height / 2 - tileCenterY,
+    });
+  };
+
+  // Save tile name from modal
+  const handleSaveTileName = (label: string) => {
+    if (!namingTileTarget) return;
+    const { x, y } = namingTileTarget;
+    const idx = y * map.width + x;
+    const oldTile = map.tiles[idx] || { terrain: 'grass', obj: '' };
+    const newTile: GridTile = { ...oldTile, label: label || undefined };
+
+    const mutation: TileMutation = { index: idx, oldTile, newTile };
+    setUndoStack(prev => [...prev.slice(-49), [mutation]]);
+    setRedoStack([]);
+
+    const newTiles = [...map.tiles];
+    newTiles[idx] = newTile;
+    updateMapState({ ...map, tiles: newTiles, updatedAt: Date.now() });
+    setNamingTileTarget(null);
+  };
+
+  // Custom tiles registration
+  const handleAddCustomTerrain = (newTerrain: TerrainDef) => {
+    registerCustomTerrain(newTerrain);
+    const updated = [...customTerrains, newTerrain];
+    setCustomTerrains(updated);
+    saveStoredCustomTerrains(updated);
+    setSelectedTerrain(newTerrain.id);
+    setSelectedObject('');
+    setPaletteTab(0);
+  };
+
+  const handleAddCustomObject = (newObject: MapObjectDef) => {
+    registerCustomObject(newObject);
+    const updated = [...customObjects, newObject];
+    setCustomObjects(updated);
+    saveStoredCustomObjects(updated);
+    setSelectedObject(newObject.id);
+    setPaletteTab(1);
+  };
+
   // Mouse / Touch Pointer interaction
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPanMode || e.button === 1 || e.button === 2) {
@@ -368,6 +459,13 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
     const gridPos = screenToGrid(e.clientX, e.clientY);
     if (!gridPos) return;
+
+    if (activeTool === 'LABEL') {
+      const idx = gridPos.y * map.width + gridPos.x;
+      const tile = map.tiles[idx] || { terrain: 'grass', obj: '' };
+      setNamingTileTarget({ x: gridPos.x, y: gridPos.y, tile });
+      return;
+    }
 
     if (activeTool === 'FILL_BUCKET') {
       floodFill(gridPos.x, gridPos.y, map);
@@ -586,6 +684,18 @@ export const EditorView: React.FC<EditorViewProps> = ({
           </button>
 
           <button
+            onClick={() => setShowLabels(prev => !prev)}
+            title={showLabels ? 'Hide Tile Name Badges' : 'Show Tile Name Badges'}
+            className={`p-1.5 rounded-lg border text-xs transition-colors ${
+              showLabels
+                ? 'border-indigo-500/50 bg-indigo-500/20 text-indigo-300'
+                : 'border-slate-800 text-slate-400 hover:bg-slate-800'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+          </button>
+
+          <button
             onClick={() => setShowLegendModal(true)}
             title="Tile & Color Legend"
             className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
@@ -657,6 +767,21 @@ export const EditorView: React.FC<EditorViewProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onWheel={handleWheel}
+        onContextMenu={e => {
+          e.preventDefault();
+          const gridPos = screenToGrid(e.clientX, e.clientY);
+          if (
+            gridPos &&
+            gridPos.x >= 0 &&
+            gridPos.x < map.width &&
+            gridPos.y >= 0 &&
+            gridPos.y < map.height
+          ) {
+            const idx = gridPos.y * map.width + gridPos.x;
+            const tile = map.tiles[idx] || { terrain: 'grass', obj: '' };
+            setNamingTileTarget({ x: gridPos.x, y: gridPos.y, tile });
+          }
+        }}
         className="flex-1 relative overflow-hidden cursor-crosshair touch-none"
       >
         <canvas ref={canvasRef} className="absolute inset-0" />
@@ -689,7 +814,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
         {/* Hover Coordinate info chip */}
         {hoverCoord && hoverCoord.x >= 0 && hoverCoord.x < map.width && hoverCoord.y >= 0 && hoverCoord.y < map.height && (
-          <div className="absolute bottom-3 left-4 z-10 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-slate-800 text-[11px] font-mono text-slate-300 shadow-md backdrop-blur-xs flex items-center gap-2">
+          <div className="absolute bottom-3 left-4 z-10 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px] font-mono text-slate-300 shadow-md backdrop-blur-xs flex items-center gap-2">
             <span>X: {hoverCoord.x}, Y: {hoverCoord.y}</span>
             <span className="text-slate-500">•</span>
             <span>
@@ -704,6 +829,26 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 </span>
               </>
             )}
+            {map.tiles[hoverCoord.y * map.width + hoverCoord.x]?.label && (
+              <>
+                <span className="text-slate-500">•</span>
+                <span className="text-amber-300 font-semibold flex items-center gap-1">
+                  <Tag className="w-3 h-3" />
+                  "{map.tiles[hoverCoord.y * map.width + hoverCoord.x]?.label}"
+                </span>
+              </>
+            )}
+            <button
+              onClick={() => {
+                const idx = hoverCoord.y * map.width + hoverCoord.x;
+                const tile = map.tiles[idx] || { terrain: 'grass', obj: '' };
+                setNamingTileTarget({ x: hoverCoord.x, y: hoverCoord.y, tile });
+              }}
+              title="Name this tile"
+              className="ml-1 text-[10px] text-indigo-400 hover:text-indigo-300 underline font-sans"
+            >
+              {map.tiles[hoverCoord.y * map.width + hoverCoord.x]?.label ? 'Edit Name' : 'Name Tile'}
+            </button>
           </div>
         )}
       </div>
@@ -719,6 +864,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
               { tool: 'FILL_BUCKET' as EditorTool, icon: PaintBucket, label: 'Fill Bucket' },
               { tool: 'ERASER' as EditorTool, icon: Eraser, label: 'Eraser' },
               { tool: 'EYEDROPPER' as EditorTool, icon: Pipette, label: 'Eyedropper' },
+              { tool: 'LABEL' as EditorTool, icon: Tag, label: 'Name Tile' },
             ].map(({ tool, icon: Icon, label }) => {
               const isActive = activeTool === tool;
               return (
@@ -784,26 +930,39 @@ export const EditorView: React.FC<EditorViewProps> = ({
         </div>
 
         {/* Row 2: Category Tabs */}
-        <div className="flex items-center gap-2 max-w-7xl mx-auto border-t border-slate-800/60 pt-2">
+        <div className="flex items-center justify-between max-w-7xl mx-auto border-t border-slate-800/60 pt-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPaletteTab(0)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                paletteTab === 0
+                  ? 'bg-slate-800 text-indigo-400 border border-slate-700'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Terrains & Biomes ({TERRAIN_TYPES.length + customTerrains.length})
+            </button>
+            <button
+              onClick={() => setPaletteTab(1)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                paletteTab === 1
+                  ? 'bg-slate-800 text-indigo-400 border border-slate-700'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Structures & Objects ({MAP_OBJECTS.length + customObjects.length})
+            </button>
+          </div>
+
           <button
-            onClick={() => setPaletteTab(0)}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-              paletteTab === 0
-                ? 'bg-slate-800 text-indigo-400 border border-slate-700'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            onClick={() => {
+              setAddCustomTileInitialTab(paletteTab === 0 ? 'terrain' : 'object');
+              setShowAddCustomTileModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold transition-colors"
           >
-            Terrains & Biomes (16)
-          </button>
-          <button
-            onClick={() => setPaletteTab(1)}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-              paletteTab === 1
-                ? 'bg-slate-800 text-indigo-400 border border-slate-700'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Structures & Objects (12)
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ Add & Name Tile</span>
           </button>
         </div>
 
@@ -811,7 +970,20 @@ export const EditorView: React.FC<EditorViewProps> = ({
         <div className="max-w-7xl mx-auto overflow-x-auto pb-1 scrollbar-thin">
           {paletteTab === 0 ? (
             <div className="flex items-center gap-2 min-w-max">
-              {TERRAIN_TYPES.map(terrain => {
+              {/* Add Custom Terrain Tile card */}
+              <button
+                onClick={() => {
+                  setAddCustomTileInitialTab('terrain');
+                  setShowAddCustomTileModal(true);
+                }}
+                title="Create and Name a New Custom Terrain Tile"
+                className="flex flex-col items-center justify-center p-1.5 w-20 h-14 rounded-lg border border-dashed border-indigo-500/60 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-400 transition-all shrink-0"
+              >
+                <Plus className="w-4 h-4 mb-0.5" />
+                <span className="text-[10px] font-bold">+ New Tile</span>
+              </button>
+
+              {[...TERRAIN_TYPES, ...customTerrains].map(terrain => {
                 const isSelected = selectedTerrain === terrain.id && !selectedObject;
                 return (
                   <button
@@ -820,12 +992,15 @@ export const EditorView: React.FC<EditorViewProps> = ({
                       setSelectedTerrain(terrain.id);
                       setSelectedObject('');
                     }}
-                    className={`flex flex-col items-center justify-between p-1.5 w-20 h-14 rounded-lg border transition-all ${
+                    className={`flex flex-col items-center justify-between p-1.5 w-20 h-14 rounded-lg border transition-all relative ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300 ring-2 ring-indigo-500/30 font-semibold'
                         : 'border-slate-800 bg-slate-800/40 text-slate-400 hover:bg-slate-800 hover:border-slate-700'
                     }`}
                   >
+                    {terrain.isCustom && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-400" />
+                    )}
                     <div
                       className="w-7 h-5 rounded-sm border shadow-xs"
                       style={{
@@ -842,18 +1017,34 @@ export const EditorView: React.FC<EditorViewProps> = ({
             </div>
           ) : (
             <div className="flex items-center gap-2 min-w-max">
-              {MAP_OBJECTS.map(obj => {
+              {/* Add Custom Object Marker card */}
+              <button
+                onClick={() => {
+                  setAddCustomTileInitialTab('object');
+                  setShowAddCustomTileModal(true);
+                }}
+                title="Create and Name a New Custom Object Marker"
+                className="flex flex-col items-center justify-center p-1.5 w-20 h-14 rounded-lg border border-dashed border-indigo-500/60 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-400 transition-all shrink-0"
+              >
+                <Plus className="w-4 h-4 mb-0.5" />
+                <span className="text-[10px] font-bold">+ Marker</span>
+              </button>
+
+              {[...MAP_OBJECTS, ...customObjects].map(obj => {
                 const isSelected = selectedObject === obj.id;
                 return (
                   <button
                     key={obj.id}
                     onClick={() => setSelectedObject(obj.id)}
-                    className={`flex flex-col items-center justify-between p-1.5 w-20 h-14 rounded-lg border transition-all ${
+                    className={`flex flex-col items-center justify-between p-1.5 w-20 h-14 rounded-lg border transition-all relative ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300 ring-2 ring-indigo-500/30 font-semibold'
                         : 'border-slate-800 bg-slate-800/40 text-slate-400 hover:bg-slate-800 hover:border-slate-700'
                     }`}
                   >
+                    {obj.isCustom && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-400" />
+                    )}
                     <span className="text-xl leading-none">{obj.iconEmoji}</span>
                     <span className="text-[10px] truncate w-full text-center">
                       {obj.title.split('/')[0].trim()}
@@ -877,7 +1068,28 @@ export const EditorView: React.FC<EditorViewProps> = ({
             setSelectedObject('');
             setPaletteTab(0);
           }}
+          onFocusTile={(x, y) => focusOnTile(x, y)}
           onClose={() => setShowLegendModal(false)}
+        />
+      )}
+
+      {/* Name / Label Tile Modal */}
+      {namingTileTarget && (
+        <NameTileModal
+          coord={{ x: namingTileTarget.x, y: namingTileTarget.y }}
+          tile={namingTileTarget.tile}
+          onSave={handleSaveTileName}
+          onClose={() => setNamingTileTarget(null)}
+        />
+      )}
+
+      {/* Add Custom Tile / Object Modal */}
+      {showAddCustomTileModal && (
+        <AddCustomTileModal
+          initialTab={addCustomTileInitialTab}
+          onAddTerrain={handleAddCustomTerrain}
+          onAddObject={handleAddCustomObject}
+          onClose={() => setShowAddCustomTileModal(false)}
         />
       )}
 

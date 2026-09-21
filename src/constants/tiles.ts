@@ -23,9 +23,24 @@ export const TERRAIN_MAP = new Map<string, TerrainDef>(
   TERRAIN_TYPES.map(t => [t.id, t])
 );
 
+export function registerCustomTerrain(t: TerrainDef) {
+  TERRAIN_MAP.set(t.id.toLowerCase(), t);
+}
+
+export function unregisterCustomTerrain(id: string) {
+  TERRAIN_MAP.delete(id.toLowerCase());
+}
+
 export function getTerrain(id?: string): TerrainDef {
   if (!id) return TERRAIN_TYPES[0];
-  return TERRAIN_MAP.get(id.toLowerCase()) || TERRAIN_TYPES[0];
+  return TERRAIN_MAP.get(id.toLowerCase()) || {
+    id,
+    title: id.charAt(0).toUpperCase() + id.slice(1),
+    baseColor: '#64748B',
+    detailColor: '#475569',
+    category: 'Custom',
+    isCustom: true,
+  };
 }
 
 export const MAP_OBJECTS: MapObjectDef[] = [
@@ -46,6 +61,14 @@ export const MAP_OBJECTS: MapObjectDef[] = [
 export const OBJECT_MAP = new Map<string, MapObjectDef>(
   MAP_OBJECTS.map(o => [o.id, o])
 );
+
+export function registerCustomObject(o: MapObjectDef) {
+  OBJECT_MAP.set(o.id.toLowerCase(), o);
+}
+
+export function unregisterCustomObject(id: string) {
+  OBJECT_MAP.delete(id.toLowerCase());
+}
 
 export function getMapObject(id?: string): MapObjectDef | null {
   if (!id || id === 'none') return null;

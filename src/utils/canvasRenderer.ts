@@ -5,6 +5,7 @@ export interface RenderOptions {
   cellSize: number;
   showGrid?: boolean;
   colorOnlyMode?: boolean;
+  showLabels?: boolean;
   highlightCell?: { x: number; y: number } | null;
   offsetX?: number;
   offsetY?: number;
@@ -17,7 +18,8 @@ export function drawTile(
   y: number,
   s: number,
   showGrid: boolean = true,
-  colorOnlyMode: boolean = false
+  colorOnlyMode: boolean = false,
+  showLabels: boolean = true
 ) {
   const terrain = getTerrain(tile.terrain);
   const baseColor = terrain.baseColor;
@@ -43,6 +45,65 @@ export function drawTile(
     ctx.strokeStyle = colorOnlyMode ? 'rgba(0,0,0,0.28)' : 'rgba(0,0,0,0.18)';
     ctx.lineWidth = s > 24 ? 1 : 0.5;
     ctx.strokeRect(x, y, s, s);
+  }
+
+  // 5. Tile Label / Name Badge if present
+  if (showLabels && tile.label) {
+    drawTileLabel(ctx, tile.label, x, y, s);
+  }
+}
+
+function drawTileLabel(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  x: number,
+  y: number,
+  s: number
+) {
+  if (s >= 26) {
+    ctx.save();
+    const fontSize = Math.max(9, Math.min(11, Math.floor(s * 0.22)));
+    ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
+    const textWidth = ctx.measureText(label).width;
+    const paddingX = 4;
+    const paddingY = 2;
+    const badgeW = Math.min(textWidth + paddingX * 2, s - 4);
+    const badgeH = fontSize + paddingY * 2;
+    const badgeX = x + (s - badgeW) / 2;
+    const badgeY = y + s - badgeH - 2;
+
+    // Dark pill container
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Text with clip to avoid overflowing
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4);
+    ctx.clip();
+    ctx.fillStyle = '#F8FAFC';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + s / 2, badgeY + badgeH / 2);
+    ctx.restore();
+
+    ctx.restore();
+  } else if (s >= 14) {
+    // If small, draw a neat prominent indicator tag badge in top right corner
+    ctx.save();
+    ctx.fillStyle = '#38BDF8';
+    ctx.strokeStyle = '#0F172A';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x + s - 3.5, y + 3.5, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
@@ -230,6 +291,19 @@ function drawTerrainDetails(
       ctx.stroke();
       break;
     }
+    default: {
+      // Procedural detail for custom terrains
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x + s * 0.25, y + s * 0.25);
+      ctx.lineTo(x + s * 0.4, y + s * 0.4);
+      ctx.moveTo(x + s * 0.6, y + s * 0.6);
+      ctx.lineTo(x + s * 0.75, y + s * 0.75);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+      break;
+    }
   }
 
   ctx.restore();
@@ -260,7 +334,15 @@ export function renderGridMapToCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const { cellSize, showGrid = true, colorOnlyMode = false, highlightCell, offsetX = 0, offsetY = 0 } = options;
+  const {
+    cellSize,
+    showGrid = true,
+    colorOnlyMode = false,
+    showLabels = true,
+    highlightCell,
+    offsetX = 0,
+    offsetY = 0,
+  } = options;
 
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
@@ -268,7 +350,7 @@ export function renderGridMapToCanvas(
       const drawX = offsetX + x * cellSize;
       const drawY = offsetY + y * cellSize;
 
-      drawTile(ctx, tile, drawX, drawY, cellSize, showGrid, colorOnlyMode);
+      drawTile(ctx, tile, drawX, drawY, cellSize, showGrid, colorOnlyMode, showLabels);
     }
   }
 
@@ -297,6 +379,7 @@ export function renderSeamlessWorld(
   cellSize: number,
   showSectorBorders: boolean = true,
   colorOnlyMode: boolean = false,
+  showLabels: boolean = true,
   offsetX: number = 0,
   offsetY: number = 0
 ) {
@@ -318,7 +401,7 @@ export function renderSeamlessWorld(
             const tile = subMap.tiles[my * subMap.width + mx] || { terrain: 'grass', obj: '' };
             const drawX = sectorX + mx * cellSize;
             const drawY = sectorY + my * cellSize;
-            drawTile(ctx, tile, drawX, drawY, cellSize, false, colorOnlyMode);
+            drawTile(ctx, tile, drawX, drawY, cellSize, false, colorOnlyMode, showLabels);
           }
         }
       } else {

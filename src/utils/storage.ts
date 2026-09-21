@@ -1,7 +1,52 @@
-import { GridMap, WorldMap, GridTile } from '../types';
+import { GridMap, WorldMap, GridTile, TerrainDef, MapObjectDef } from '../types';
+import { registerCustomTerrain, registerCustomObject } from '../constants/tiles';
 
 const MAPS_STORAGE_KEY = 'map_maker_grid_maps_v1';
 const WORLDS_STORAGE_KEY = 'map_maker_worlds_v1';
+const CUSTOM_TERRAINS_KEY = 'map_maker_custom_terrains_v1';
+const CUSTOM_OBJECTS_KEY = 'map_maker_custom_objects_v1';
+
+export function getStoredCustomTerrains(): TerrainDef[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_TERRAINS_KEY);
+    if (!raw) return [];
+    const list: TerrainDef[] = JSON.parse(raw);
+    list.forEach(t => registerCustomTerrain(t));
+    return list;
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveStoredCustomTerrains(terrains: TerrainDef[]) {
+  try {
+    localStorage.setItem(CUSTOM_TERRAINS_KEY, JSON.stringify(terrains));
+    terrains.forEach(t => registerCustomTerrain(t));
+  } catch (e) {
+    console.error('Failed to save custom terrains:', e);
+  }
+}
+
+export function getStoredCustomObjects(): MapObjectDef[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_OBJECTS_KEY);
+    if (!raw) return [];
+    const list: MapObjectDef[] = JSON.parse(raw);
+    list.forEach(o => registerCustomObject(o));
+    return list;
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveStoredCustomObjects(objects: MapObjectDef[]) {
+  try {
+    localStorage.setItem(CUSTOM_OBJECTS_KEY, JSON.stringify(objects));
+    objects.forEach(o => registerCustomObject(o));
+  } catch (e) {
+    console.error('Failed to save custom objects:', e);
+  }
+}
 
 export function getStoredMaps(): GridMap[] {
   try {

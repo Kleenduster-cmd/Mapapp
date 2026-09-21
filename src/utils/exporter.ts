@@ -8,6 +8,7 @@ export interface MapExportOptions {
   includeTitle: boolean;
   includeLegend: boolean;
   colorOnlyMode: boolean;
+  includeLabels?: boolean;
 }
 
 export interface WorldExportOptions {
@@ -16,10 +17,18 @@ export interface WorldExportOptions {
   includeBorders: boolean;
   includeLegend: boolean;
   colorOnlyMode: boolean;
+  includeLabels?: boolean;
 }
 
 export async function renderMapToBlob(map: GridMap, options: MapExportOptions): Promise<Blob> {
-  const { cellSize, includeGridLines, includeTitle, includeLegend, colorOnlyMode } = options;
+  const {
+    cellSize,
+    includeGridLines,
+    includeTitle,
+    includeLegend,
+    colorOnlyMode,
+    includeLabels = true,
+  } = options;
 
   const headerHeight = includeTitle ? 80 : 0;
   const legendHeight = includeLegend ? 90 : 0;
@@ -65,7 +74,8 @@ export async function renderMapToBlob(map: GridMap, options: MapExportOptions): 
         mapOffsetY + y * cellSize,
         cellSize,
         includeGridLines,
-        colorOnlyMode
+        colorOnlyMode,
+        includeLabels
       );
     }
   }
@@ -127,7 +137,13 @@ export async function renderWorldToBlob(
   connectedMaps: Record<number, GridMap>,
   options: WorldExportOptions
 ): Promise<Blob> {
-  const { cellSize, includeBorders, includeLegend, colorOnlyMode } = options;
+  const {
+    cellSize,
+    includeBorders,
+    includeLegend,
+    colorOnlyMode,
+    includeLabels = true,
+  } = options;
 
   const standardSectorW = 16;
   const standardSectorH = 16;
@@ -174,6 +190,7 @@ export async function renderWorldToBlob(
     cellSize,
     includeBorders,
     colorOnlyMode,
+    includeLabels,
     0,
     headerH
   );

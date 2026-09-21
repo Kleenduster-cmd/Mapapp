@@ -3,7 +3,8 @@ export interface TerrainDef {
   title: string;
   baseColor: string;
   detailColor: string;
-  category: 'Natural' | 'Water' | 'Path' | 'Hazard' | 'Dungeon' | 'Structure';
+  category: 'Natural' | 'Water' | 'Path' | 'Hazard' | 'Dungeon' | 'Structure' | 'Custom';
+  isCustom?: boolean;
 }
 
 export interface MapObjectDef {
@@ -11,12 +12,13 @@ export interface MapObjectDef {
   title: string;
   iconEmoji: string;
   color: string;
+  isCustom?: boolean;
 }
 
 export interface GridTile {
   terrain: string; // terrain id
   obj: string;     // object id or empty/none
-  label?: string;
+  label?: string;  // custom name/label for the tile
 }
 
 export interface GridMap {
@@ -41,7 +43,7 @@ export interface WorldMap {
   description: string;
 }
 
-export type EditorTool = 'BRUSH' | 'FILL_BUCKET' | 'ERASER' | 'EYEDROPPER';
+export type EditorTool = 'BRUSH' | 'FILL_BUCKET' | 'ERASER' | 'EYEDROPPER' | 'LABEL';
 
 export interface TileMutation {
   index: number;

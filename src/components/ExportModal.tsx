@@ -33,6 +33,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [includeGridLines, setIncludeGridLines] = useState(true);
   const [includeTitle, setIncludeTitle] = useState(true);
   const [includeLegend, setIncludeLegend] = useState(true);
+  const [includeLabels, setIncludeLabels] = useState(true);
   const [colorOnlyMode, setColorOnlyMode] = useState(false);
   const [cellSize, setCellSize] = useState(48);
 
@@ -59,6 +60,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           includeBorders,
           includeLegend,
           colorOnlyMode,
+          includeLabels,
         });
         downloadFile(blob, `${worldMap.name.toLowerCase().replace(/\s+/g, '_')}_world.png`);
       } else if (map) {
@@ -68,6 +70,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           includeTitle,
           includeLegend,
           colorOnlyMode,
+          includeLabels,
         });
         downloadFile(blob, `${map.name.toLowerCase().replace(/\s+/g, '_')}.png`);
       }
@@ -190,6 +193,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     className="w-4 h-4 rounded-sm border-slate-600 bg-slate-700 text-indigo-600 focus:ring-indigo-500"
                   />
                   <span className="text-slate-200">Include Tile & Color Legend</span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeLabels}
+                    onChange={e => setIncludeLabels(e.target.checked)}
+                    className="w-4 h-4 rounded-sm border-slate-600 bg-slate-700 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-slate-200">Include Tile Name Badges</span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer">
