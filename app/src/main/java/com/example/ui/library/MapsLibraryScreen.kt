@@ -632,13 +632,13 @@ fun CreateMapDialog(
     var selectedTerrain by remember { mutableStateOf(TerrainType.GRASS) }
 
     fun updateWidth(newW: Int) {
-        val clamped = newW.coerceIn(2, 64)
+        val clamped = newW.coerceIn(2, 256)
         width = clamped
         widthText = clamped.toString()
     }
 
     fun updateHeight(newH: Int) {
-        val clamped = newH.coerceIn(2, 64)
+        val clamped = newH.coerceIn(2, 256)
         height = clamped
         heightText = clamped.toString()
     }
@@ -647,9 +647,10 @@ fun CreateMapDialog(
         Pair(8, 8) to "8×8",
         Pair(12, 12) to "12×12",
         Pair(16, 16) to "16×16",
-        Pair(20, 20) to "20×20",
         Pair(24, 24) to "24×24",
-        Pair(32, 32) to "32×32"
+        Pair(32, 32) to "32×32",
+        Pair(48, 48) to "48×48",
+        Pair(64, 64) to "64×64"
     )
 
     AlertDialog(
@@ -681,6 +682,11 @@ fun CreateMapDialog(
                         fontWeight = FontWeight.Bold
                     )
                 }
+                Text(
+                    text = "Supports 2 to 256 tiles & Infinite Dimension expansion",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -698,7 +704,7 @@ fun CreateMapDialog(
                         value = widthText,
                         onValueChange = {
                             widthText = it
-                            it.toIntOrNull()?.let { w -> if (w in 2..64) width = w }
+                            it.toIntOrNull()?.let { w -> if (w in 2..256) width = w }
                         },
                         singleLine = true,
                         modifier = Modifier.weight(1f).testTag("new_map_width_input"),
@@ -725,7 +731,7 @@ fun CreateMapDialog(
                         value = heightText,
                         onValueChange = {
                             heightText = it
-                            it.toIntOrNull()?.let { h -> if (h in 2..64) height = h }
+                            it.toIntOrNull()?.let { h -> if (h in 2..256) height = h }
                         },
                         singleLine = true,
                         modifier = Modifier.weight(1f).testTag("new_map_height_input"),
@@ -743,7 +749,7 @@ fun CreateMapDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    presets.take(4).forEach { (dims, label) ->
+                    presets.forEach { (dims, label) ->
                         FilterChip(
                             selected = width == dims.first && height == dims.second,
                             onClick = {

@@ -68,6 +68,43 @@ data class GridMap(
         return copy(tiles = newTiles, updatedAt = System.currentTimeMillis())
     }
 
+    fun expandMap(
+        addLeft: Int = 0,
+        addTop: Int = 0,
+        addRight: Int = 0,
+        addBottom: Int = 0,
+        fillTerrain: TerrainType = TerrainType.GRASS
+    ): GridMap {
+        if (addLeft <= 0 && addTop <= 0 && addRight <= 0 && addBottom <= 0) return this
+        val clampedLeft = maxOf(0, addLeft)
+        val clampedTop = maxOf(0, addTop)
+        val clampedRight = maxOf(0, addRight)
+        val clampedBottom = maxOf(0, addBottom)
+
+        val newWidth = width + clampedLeft + clampedRight
+        val newHeight = height + clampedTop + clampedBottom
+        val newTiles = ArrayList<GridTile>(newWidth * newHeight)
+
+        for (ny in 0 until newHeight) {
+            val oldY = ny - clampedTop
+            for (nx in 0 until newWidth) {
+                val oldX = nx - clampedLeft
+                if (oldX in 0 until width && oldY in 0 until height) {
+                    newTiles.add(getTile(oldX, oldY))
+                } else {
+                    newTiles.add(GridTile(fillTerrain))
+                }
+            }
+        }
+
+        return copy(
+            width = newWidth,
+            height = newHeight,
+            tiles = newTiles,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
     fun serializeTiles(): String {
         return tiles.joinToString(";") { it.toSerialized() }
     }

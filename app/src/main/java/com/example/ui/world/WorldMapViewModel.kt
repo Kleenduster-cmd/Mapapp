@@ -179,4 +179,13 @@ class WorldMapViewModel(
             _uiState.update { it.copy(worldMap = updated) }
         }
     }
+
+    fun expandWorldDirection(addLeft: Int = 0, addTop: Int = 0, addRight: Int = 0, addBottom: Int = 0) {
+        val currentWorld = _uiState.value.worldMap ?: return
+        val updated = currentWorld.expandWorld(addLeft, addTop, addRight, addBottom)
+        viewModelScope.launch {
+            repository.saveWorldMap(updated)
+            _uiState.update { it.copy(worldMap = updated, selectedSector = null) }
+        }
+    }
 }

@@ -948,7 +948,7 @@ fun CreateSectorMapDialog(
                                 onValueChange = { text ->
                                     widthText = text
                                     text.toIntOrNull()?.let { v ->
-                                        if (v in 2..64) width = v
+                                        if (v in 2..256) width = v
                                     }
                                 },
                                 singleLine = true,
@@ -956,7 +956,7 @@ fun CreateSectorMapDialog(
                             )
                             IconButton(
                                 onClick = {
-                                    val nw = (width + 1).coerceAtMost(64)
+                                    val nw = (width + 1).coerceAtMost(256)
                                     width = nw
                                     widthText = nw.toString()
                                 },
@@ -986,7 +986,7 @@ fun CreateSectorMapDialog(
                                 onValueChange = { text ->
                                     heightText = text
                                     text.toIntOrNull()?.let { v ->
-                                        if (v in 2..64) height = v
+                                        if (v in 2..256) height = v
                                     }
                                 },
                                 singleLine = true,
@@ -994,7 +994,7 @@ fun CreateSectorMapDialog(
                             )
                             IconButton(
                                 onClick = {
-                                    val nh = (height + 1).coerceAtMost(64)
+                                    val nh = (height + 1).coerceAtMost(256)
                                     height = nh
                                     heightText = nh.toString()
                                 },
@@ -1012,7 +1012,7 @@ fun CreateSectorMapDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf(8 to 8, 12 to 12, 16 to 16, 24 to 24, 32 to 32).forEach { (w, h) ->
+                    listOf(8 to 8, 12 to 12, 16 to 16, 24 to 24, 32 to 32, 48 to 48, 64 to 64).forEach { (w, h) ->
                         FilterChip(
                             selected = width == w && height == h,
                             onClick = {
@@ -1046,7 +1046,7 @@ fun CreateSectorMapDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(name, width, height, selectedTerrain) },
-                enabled = name.isNotBlank() && width in 2..64 && height in 2..64,
+                enabled = name.isNotBlank() && width in 2..256 && height in 2..256,
                 modifier = Modifier.testTag("confirm_create_sector_map")
             ) {
                 Text("Create & Edit")
@@ -1112,7 +1112,8 @@ fun ResizeWorldDialog(
         Pair(3, 3) to "3×3",
         Pair(4, 4) to "4×4",
         Pair(5, 5) to "5×5",
-        Pair(6, 6) to "6×6"
+        Pair(6, 6) to "6×6",
+        Pair(8, 8) to "8×8"
     )
 
     AlertDialog(
@@ -1189,7 +1190,7 @@ fun ResizeWorldDialog(
                         textAlign = TextAlign.Center
                     )
                     IconButton(
-                        onClick = { if (cols < 8) cols++ },
+                        onClick = { if (cols < 16) cols++ },
                         modifier = Modifier.size(36.dp).testTag("world_cols_plus_button")
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Increase columns")
@@ -1219,7 +1220,7 @@ fun ResizeWorldDialog(
                         textAlign = TextAlign.Center
                     )
                     IconButton(
-                        onClick = { if (rows < 8) rows++ },
+                        onClick = { if (rows < 16) rows++ },
                         modifier = Modifier.size(36.dp).testTag("world_rows_plus_button")
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Increase rows")

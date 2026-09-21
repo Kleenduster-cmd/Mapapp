@@ -27,8 +27,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -38,6 +41,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Handyman
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PanTool
@@ -45,6 +50,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -66,6 +72,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -140,9 +147,9 @@ fun MapEditorScreen(
                                 )
                             }
                             Text(
-                                text = "${map.width}×${map.height} • ${map.tiles.size} tiles",
+                                text = "${map.width}×${map.height} • ${map.tiles.size} tiles" + if (state.isInfiniteCanvas) " • ∞ Infinite" else "",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (state.isInfiniteCanvas) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -181,6 +188,18 @@ fun MapEditorScreen(
                         modifier = Modifier.testTag("redo_button")
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
+                    }
+
+                    // Infinite Canvas Toggle
+                    IconButton(
+                        onClick = { viewModel.toggleInfiniteCanvas() },
+                        modifier = Modifier.testTag("infinite_canvas_toggle_button")
+                    ) {
+                        Icon(
+                            Icons.Default.AllInclusive,
+                            contentDescription = if (state.isInfiniteCanvas) "Infinite Dimension: Enabled" else "Infinite Dimension: Disabled",
+                            tint = if (state.isInfiniteCanvas) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     // Tile Legend Button
@@ -234,6 +253,22 @@ fun MapEditorScreen(
                                     }
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text(if (state.isInfiniteCanvas) "Disable Infinite Dimension" else "Enable Infinite Dimension (∞)") },
+                                leadingIcon = { Icon(Icons.Default.AllInclusive, contentDescription = null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.toggleInfiniteCanvas()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Expand Canvas (+4 All Sides)") },
+                                leadingIcon = { Icon(Icons.Default.ZoomOutMap, contentDescription = null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.expandMapDirection(CanvasDirection.ALL_SIDES, 4)
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Tile & Color Legend") },
                                 leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) },
@@ -316,19 +351,22 @@ fun MapEditorScreen(
                 MapCanvas(
                     map = map,
                     state = state,
-                    onCellTouchDown = { x, y ->
+                    onCellTouchDown = { x, y, cellSize ->
                         hoveredCell = Pair(x, y)
-                        viewModel.onTouchDown(x, y)
+                        viewModel.onTouchDown(x, y, cellSize)
                     },
-                    onCellTouchMove = { x, y ->
+                    onCellTouchMove = { x, y, cellSize ->
                         hoveredCell = Pair(x, y)
-                        viewModel.onTouchMove(x, y)
+                        viewModel.onTouchMove(x, y, cellSize)
                     },
                     onCellTouchUp = {
                         viewModel.onTouchUp()
                     },
                     onTransform = { zoomDelta, panDelta ->
                         viewModel.updateZoomAndPan(zoomDelta, panDelta)
+                    },
+                    onExpandDirection = { dir ->
+                        viewModel.expandMapDirection(dir)
                     }
                 )
 
@@ -341,7 +379,7 @@ fun MapEditorScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Cell coordinate badge & Legend quick access
+                    // Cell coordinate badge & Legend & Infinite quick access
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -359,6 +397,35 @@ fun MapEditorScreen(
                                     text = coordText,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White
+                                )
+                            }
+                        }
+
+                        // Infinite Dimension Quick Pill
+                        Surface(
+                            color = if (state.isInfiniteCanvas) MaterialTheme.colorScheme.primaryContainer else Color.Black.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { viewModel.toggleInfiniteCanvas() }
+                                .testTag("canvas_infinite_pill")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.AllInclusive,
+                                    contentDescription = "Infinite Dimension Mode",
+                                    tint = if (state.isInfiniteCanvas) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (state.isInfiniteCanvas) "∞ Infinite" else "Fixed",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (state.isInfiniteCanvas) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
                         }
@@ -480,10 +547,11 @@ fun MapEditorScreen(
 fun MapCanvas(
     map: GridMap,
     state: EditorUiState,
-    onCellTouchDown: (Int, Int) -> Unit,
-    onCellTouchMove: (Int, Int) -> Unit,
+    onCellTouchDown: (Int, Int, Float) -> Unit,
+    onCellTouchMove: (Int, Int, Float) -> Unit,
     onCellTouchUp: () -> Unit,
-    onTransform: (Float, Offset) -> Unit
+    onTransform: (Float, Offset) -> Unit,
+    onExpandDirection: (CanvasDirection) -> Unit = {}
 ) {
     BoxWithConstraints(
         modifier = Modifier
@@ -493,11 +561,15 @@ fun MapCanvas(
         val containerWidth = constraints.maxWidth.toFloat()
         val containerHeight = constraints.maxHeight.toFloat()
 
-        // Base cell size to fit nicely in container
-        val baseCellSize = remember(map.width, map.height, containerWidth, containerHeight) {
-            val fitW = (containerWidth * 0.9f) / map.width
-            val fitH = (containerHeight * 0.9f) / map.height
-            minOf(fitW, fitH).coerceIn(16f, 64f)
+        // Base cell size is stabilized per map ID so auto-expansion keeps scale stable
+        val baseCellSize = remember(map.id, containerWidth > 0f && containerHeight > 0f) {
+            if (containerWidth > 0f && containerHeight > 0f) {
+                val fitW = (containerWidth * 0.85f) / maxOf(map.width, 16)
+                val fitH = (containerHeight * 0.85f) / maxOf(map.height, 16)
+                minOf(fitW, fitH).coerceIn(20f, 56f)
+            } else {
+                32f
+            }
         }
 
         val mapPixelW = map.width * baseCellSize
@@ -515,7 +587,7 @@ fun MapCanvas(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("map_canvas")
-                .pointerInput(map, state.isPanMode, state.activeTool, state.zoom, state.panOffset) {
+                .pointerInput(map, state.isPanMode, state.activeTool, state.zoom, state.panOffset, state.isInfiniteCanvas) {
                     if (state.isPanMode) {
                         detectTransformGestures { _, pan, zoomDelta, _ ->
                             onTransform(zoomDelta, pan)
@@ -526,36 +598,62 @@ fun MapCanvas(
                             onDragStart = { offset ->
                                 val localX = (offset.x - effectiveOffsetX) / state.zoom
                                 val localY = (offset.y - effectiveOffsetY) / state.zoom
-                                val cx = (localX / baseCellSize).toInt()
-                                val cy = (localY / baseCellSize).toInt()
-                                onCellTouchDown(cx, cy)
+                                val cx = kotlin.math.floor(localX / baseCellSize).toInt()
+                                val cy = kotlin.math.floor(localY / baseCellSize).toInt()
+                                onCellTouchDown(cx, cy, baseCellSize)
                             },
                             onDrag = { change, _ ->
                                 change.consume()
                                 val localX = (change.position.x - effectiveOffsetX) / state.zoom
                                 val localY = (change.position.y - effectiveOffsetY) / state.zoom
-                                val cx = (localX / baseCellSize).toInt()
-                                val cy = (localY / baseCellSize).toInt()
-                                onCellTouchMove(cx, cy)
+                                val cx = kotlin.math.floor(localX / baseCellSize).toInt()
+                                val cy = kotlin.math.floor(localY / baseCellSize).toInt()
+                                onCellTouchMove(cx, cy, baseCellSize)
                             },
                             onDragEnd = { onCellTouchUp() },
                             onDragCancel = { onCellTouchUp() }
                         )
                     }
                 }
-                .pointerInput(map, state.isPanMode, state.zoom, state.panOffset) {
+                .pointerInput(map, state.isPanMode, state.zoom, state.panOffset, state.isInfiniteCanvas) {
                     if (!state.isPanMode) {
                         detectTapGestures { offset ->
                             val localX = (offset.x - effectiveOffsetX) / state.zoom
                             val localY = (offset.y - effectiveOffsetY) / state.zoom
-                            val cx = (localX / baseCellSize).toInt()
-                            val cy = (localY / baseCellSize).toInt()
-                            onCellTouchDown(cx, cy)
+                            val cx = kotlin.math.floor(localX / baseCellSize).toInt()
+                            val cy = kotlin.math.floor(localY / baseCellSize).toInt()
+                            onCellTouchDown(cx, cy, baseCellSize)
                             onCellTouchUp()
                         }
                     }
                 }
         ) {
+            // Infinite canvas background grid
+            if (state.isInfiniteCanvas && state.showGrid && effectiveCellSize >= 8f) {
+                val startX = (effectiveOffsetX % effectiveCellSize + effectiveCellSize) % effectiveCellSize
+                val startY = (effectiveOffsetY % effectiveCellSize + effectiveCellSize) % effectiveCellSize
+                var gx = startX
+                while (gx < size.width) {
+                    drawLine(
+                        color = Color(0x1894A3B8),
+                        start = Offset(gx, 0f),
+                        end = Offset(gx, size.height),
+                        strokeWidth = 1f
+                    )
+                    gx += effectiveCellSize
+                }
+                var gy = startY
+                while (gy < size.height) {
+                    drawLine(
+                        color = Color(0x1894A3B8),
+                        start = Offset(0f, gy),
+                        end = Offset(size.width, gy),
+                        strokeWidth = 1f
+                    )
+                    gy += effectiveCellSize
+                }
+            }
+
             // Draw all tiles
             for (y in 0 until map.height) {
                 for (x in 0 until map.width) {
@@ -583,11 +681,96 @@ fun MapCanvas(
 
             // Draw outer border around the map
             drawRect(
-                color = Color(0xFF64748B),
+                color = if (state.isInfiniteCanvas) Color(0xFF818CF8) else Color(0xFF64748B),
                 topLeft = Offset(effectiveOffsetX, effectiveOffsetY),
                 size = androidx.compose.ui.geometry.Size(map.width * effectiveCellSize, map.height * effectiveCellSize),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (state.isInfiniteCanvas) 2.5f else 2f)
             )
+        }
+
+        // On-Canvas Directional Expansion Buttons (when Infinite Canvas is active and not panning)
+        if (state.isInfiniteCanvas && !state.isPanMode) {
+            // North button (Top Center)
+            Surface(
+                onClick = { onExpandDirection(CanvasDirection.NORTH) },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.9f),
+                tonalElevation = 3.dp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+                    .testTag("expand_north_button")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Expand North", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text("+4 North", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // South button (Bottom Center, positioned above the bottom toolbar overlay)
+            Surface(
+                onClick = { onExpandDirection(CanvasDirection.SOUTH) },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.9f),
+                tonalElevation = 3.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 54.dp)
+                    .testTag("expand_south_button")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Expand South", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text("+4 South", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // West button (Center Start)
+            Surface(
+                onClick = { onExpandDirection(CanvasDirection.WEST) },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.9f),
+                tonalElevation = 3.dp,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 8.dp)
+                    .testTag("expand_west_button")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Expand West", modifier = Modifier.size(16.dp))
+                    Text("+4W", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // East button (Center End)
+            Surface(
+                onClick = { onExpandDirection(CanvasDirection.EAST) },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.9f),
+                tonalElevation = 3.dp,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 8.dp)
+                    .testTag("expand_east_button")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("+4E", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Expand East", modifier = Modifier.size(16.dp))
+                }
+            }
         }
     }
 }
@@ -870,13 +1053,13 @@ fun ResizeGridDialog(
     var heightText by remember { mutableStateOf(currentHeight.toString()) }
 
     fun updateWidth(newW: Int) {
-        val clamped = newW.coerceIn(2, 64)
+        val clamped = newW.coerceIn(2, 256)
         width = clamped
         widthText = clamped.toString()
     }
 
     fun updateHeight(newH: Int) {
-        val clamped = newH.coerceIn(2, 64)
+        val clamped = newH.coerceIn(2, 256)
         height = clamped
         heightText = clamped.toString()
     }
@@ -885,9 +1068,11 @@ fun ResizeGridDialog(
         Pair(8, 8) to "8×8",
         Pair(12, 12) to "12×12",
         Pair(16, 16) to "16×16",
-        Pair(20, 20) to "20×20",
         Pair(24, 24) to "24×24",
-        Pair(32, 32) to "32×32"
+        Pair(32, 32) to "32×32",
+        Pair(48, 48) to "48×48",
+        Pair(64, 64) to "64×64",
+        Pair(96, 96) to "96×96"
     )
 
     AlertDialog(
@@ -907,7 +1092,7 @@ fun ResizeGridDialog(
         text = {
             Column {
                 Text(
-                    text = "Adjust map width and height (2 to 64 tiles). Cells outside new dimensions will be cropped; new cells will be filled with grass.",
+                    text = "Adjust map width and height (2 to 256 tiles, or enable Infinite Dimension for auto-expanding canvas). New cells are filled with grass.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -969,7 +1154,7 @@ fun ResizeGridDialog(
                         onValueChange = {
                             widthText = it
                             it.toIntOrNull()?.let { w ->
-                                if (w in 2..64) width = w
+                                if (w in 2..256) width = w
                             }
                         },
                         singleLine = true,
@@ -1019,7 +1204,7 @@ fun ResizeGridDialog(
                         onValueChange = {
                             heightText = it
                             it.toIntOrNull()?.let { h ->
-                                if (h in 2..64) height = h
+                                if (h in 2..256) height = h
                             }
                         },
                         singleLine = true,
@@ -1060,6 +1245,30 @@ fun ResizeGridDialog(
                             label = { Text(label, fontSize = 11.sp) }
                         )
                     }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Quick Expansion shortcuts
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            updateWidth(width + 4)
+                            updateHeight(height + 4)
+                        },
+                        label = { Text("+4 Both Dims", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            updateWidth(width + 8)
+                            updateHeight(height + 8)
+                        },
+                        label = { Text("+8 Both Dims", fontSize = 11.sp) }
+                    )
                 }
             }
         },

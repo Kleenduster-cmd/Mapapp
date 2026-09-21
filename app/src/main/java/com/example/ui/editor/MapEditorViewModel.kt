@@ -22,6 +22,14 @@ enum class EditorTool {
     EYEDROPPER
 }
 
+enum class CanvasDirection {
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST,
+    ALL_SIDES
+}
+
 data class TileMutation(
     val index: Int,
     val oldTile: GridTile,
@@ -36,6 +44,7 @@ data class EditorUiState(
     val brushSize: Int = 1, // 1, 2, 3
     val showGrid: Boolean = true,
     val isPanMode: Boolean = false,
+    val isInfiniteCanvas: Boolean = true,
     val zoom: Float = 1f,
     val panOffset: Offset = Offset.Zero,
     val canUndo: Boolean = false,
@@ -130,14 +139,14 @@ class MapEditorViewModel(
     }
 
     // Touch event handling
-    fun onTouchDown(cellX: Int, cellY: Int) {
+    fun onTouchDown(cellX: Int, cellY: Int, baseCellSize: Float = 32f) {
         currentStrokeMutations.clear()
-        applyToolAt(cellX, cellY)
+        applyToolAt(cellX, cellY, baseCellSize)
     }
 
-    fun onTouchMove(cellX: Int, cellY: Int) {
+    fun onTouchMove(cellX: Int, cellY: Int, baseCellSize: Float = 32f) {
         if (_uiState.value.activeTool == EditorTool.BRUSH || _uiState.value.activeTool == EditorTool.ERASER) {
-            applyToolAt(cellX, cellY)
+            applyToolAt(cellX, cellY, baseCellSize)
         }
     }
 
@@ -153,8 +162,58 @@ class MapEditorViewModel(
         }
     }
 
-    private fun applyToolAt(cx: Int, cy: Int) {
-        val currentMap = _uiState.value.map ?: return
+    private fun applyToolAt(targetCx: Int, targetCy: Int, baseCellSize: Float = 32f) {
+        var currentMap = _uiState.value.map ?: return
+        var cx = targetCx
+        var cy = targetCy
+
+        if (_uiState.value.isInfiniteCanvas) {
+            if (cx !in 0 until currentMap.width || cy !in 0 until currentMap.height) {
+                val chunk = 4
+                val maxDim = 512
+                val addLeft = if (cx < 0) maxOf(chunk, -cx).coerceAtMost(maxDim - currentMap.width) else 0
+                val addRight = if (cx >= currentMap.width) maxOf(chunk, cx - currentMap.width + 1).coerceAtMost(maxDim - currentMap.width) else 0
+                val addTop = if (cy < 0) maxOf(chunk, -cy).coerceAtMost(maxDim - currentMap.height) else 0
+                val addBottom = if (cy >= currentMap.height) maxOf(chunk, cy - currentMap.height + 1).coerceAtMost(maxDim - currentMap.height) else 0
+
+                if (addLeft > 0 || addRight > 0 || addTop > 0 || addBottom > 0) {
+                    val fillTerrain = currentMap.tiles.firstOrNull()?.terrain ?: TerrainType.GRASS
+                    val expandedMap = currentMap.expandMap(addLeft, addTop, addRight, addBottom, fillTerrain)
+
+                    if (currentStrokeMutations.isNotEmpty()) {
+                        val shifted = mutableMapOf<Int, TileMutation>()
+                        for ((oldIdx, mut) in currentStrokeMutations) {
+                            val oldX = oldIdx % currentMap.width
+                            val oldY = oldIdx / currentMap.width
+                            val newX = oldX + addLeft
+                            val newY = oldY + addTop
+                            val newIdx = newY * expandedMap.width + newX
+                            shifted[newIdx] = mut.copy(index = newIdx)
+                        }
+                        currentStrokeMutations.clear()
+                        currentStrokeMutations.putAll(shifted)
+                    }
+
+                    val deltaW = (addLeft + addRight) * baseCellSize
+                    val deltaH = (addTop + addBottom) * baseCellSize
+                    val newPanX = _uiState.value.panOffset.x + (deltaW / 2f) - (addLeft * baseCellSize * _uiState.value.zoom)
+                    val newPanY = _uiState.value.panOffset.y + (deltaH / 2f) - (addTop * baseCellSize * _uiState.value.zoom)
+
+                    cx += addLeft
+                    cy += addTop
+                    currentMap = expandedMap
+
+                    _uiState.update {
+                        it.copy(
+                            map = expandedMap,
+                            panOffset = Offset(newPanX, newPanY),
+                            isSaved = false
+                        )
+                    }
+                }
+            }
+        }
+
         if (cx !in 0 until currentMap.width || cy !in 0 until currentMap.height) return
 
         when (_uiState.value.activeTool) {
@@ -403,6 +462,57 @@ class MapEditorViewModel(
             }
             autoSave()
         }
+    }
+
+    fun toggleInfiniteCanvas() {
+        _uiState.update { it.copy(isInfiniteCanvas = !it.isInfiniteCanvas) }
+    }
+
+    fun setInfiniteCanvas(enabled: Boolean) {
+        _uiState.update { it.copy(isInfiniteCanvas = enabled) }
+    }
+
+    fun expandMapDirection(direction: CanvasDirection, count: Int = 4, baseCellSize: Float = 32f) {
+        val currentMap = _uiState.value.map ?: return
+        val fillTerrain = _uiState.value.selectedTerrain
+
+        var addLeft = 0
+        var addTop = 0
+        var addRight = 0
+        var addBottom = 0
+
+        when (direction) {
+            CanvasDirection.NORTH -> addTop = count
+            CanvasDirection.SOUTH -> addBottom = count
+            CanvasDirection.WEST -> addLeft = count
+            CanvasDirection.EAST -> addRight = count
+            CanvasDirection.ALL_SIDES -> {
+                addLeft = count
+                addTop = count
+                addRight = count
+                addBottom = count
+            }
+        }
+
+        val expandedMap = currentMap.expandMap(addLeft, addTop, addRight, addBottom, fillTerrain)
+
+        val deltaW = (addLeft + addRight) * baseCellSize
+        val deltaH = (addTop + addBottom) * baseCellSize
+        val newPanX = _uiState.value.panOffset.x + (deltaW / 2f) - (addLeft * baseCellSize * _uiState.value.zoom)
+        val newPanY = _uiState.value.panOffset.y + (deltaH / 2f) - (addTop * baseCellSize * _uiState.value.zoom)
+
+        undoStack.clear()
+        redoStack.clear()
+        _uiState.update {
+            it.copy(
+                map = expandedMap,
+                panOffset = Offset(newPanX, newPanY),
+                canUndo = false,
+                canRedo = false,
+                isSaved = false
+            )
+        }
+        autoSave()
     }
 
     fun toggleColorOnlyMode() {

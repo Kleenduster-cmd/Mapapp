@@ -39,6 +39,39 @@ data class WorldMap(
         return copy(slots = newSlots, updatedAt = System.currentTimeMillis())
     }
 
+    fun expandWorld(
+        addLeft: Int = 0,
+        addTop: Int = 0,
+        addRight: Int = 0,
+        addBottom: Int = 0
+    ): WorldMap {
+        if (addLeft <= 0 && addTop <= 0 && addRight <= 0 && addBottom <= 0) return this
+        val clampedLeft = maxOf(0, addLeft)
+        val clampedTop = maxOf(0, addTop)
+        val clampedRight = maxOf(0, addRight)
+        val clampedBottom = maxOf(0, addBottom)
+
+        val newCols = gridCols + clampedLeft + clampedRight
+        val newRows = gridRows + clampedTop + clampedBottom
+        val newSlots = mutableMapOf<String, Long>()
+
+        for ((key, mapId) in slots) {
+            val parts = key.split("_")
+            val c = parts.getOrNull(0)?.toIntOrNull() ?: continue
+            val r = parts.getOrNull(1)?.toIntOrNull() ?: continue
+            val newC = c + clampedLeft
+            val newR = r + clampedTop
+            newSlots["${newC}_${newR}"] = mapId
+        }
+
+        return copy(
+            gridCols = newCols,
+            gridRows = newRows,
+            slots = newSlots,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
     fun serializeSlots(): String {
         val json = JSONObject()
         for ((key, mapId) in slots) {
