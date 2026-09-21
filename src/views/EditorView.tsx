@@ -21,8 +21,25 @@ import {
   Tag,
   Plus,
   Sparkles,
+  Mountain,
+  Box,
+  Layers,
+  ChevronsUp,
+  ChevronsDown,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
-import { GridMap, EditorTool, GridTile, TileMutation, TerrainDef, MapObjectDef } from '../types';
+import {
+  GridMap,
+  EditorTool,
+  GridTile,
+  TileMutation,
+  TerrainDef,
+  MapObjectDef,
+  ViewProjection,
+  ElevationMode,
+} from '../types';
 import {
   TERRAIN_TYPES,
   MAP_OBJECTS,
@@ -31,7 +48,12 @@ import {
   registerCustomTerrain,
   registerCustomObject,
 } from '../constants/tiles';
-import { drawTile } from '../utils/canvasRenderer';
+import {
+  drawTile,
+  renderGridMap25D,
+  get25DMetrics,
+  isoScreenToGrid,
+} from '../utils/canvasRenderer';
 import {
   getStoredCustomTerrains,
   saveStoredCustomTerrains,
@@ -65,7 +87,13 @@ export const EditorView: React.FC<EditorViewProps> = ({
   const [brushSize, setBrushSize] = useState<number>(1);
   const [selectedTerrain, setSelectedTerrain] = useState<string>('grass');
   const [selectedObject, setSelectedObject] = useState<string>('');
-  const [paletteTab, setPaletteTab] = useState<0 | 1>(0);
+  const [paletteTab, setPaletteTab] = useState<0 | 1 | 2>(0); // 0: Terrains, 1: Objects, 2: Elevation presets
+
+  // 2.5D Isometric & Elevation state
+  const [viewProjection, setViewProjection] = useState<ViewProjection>('2.5D');
+  const [elevationMode, setElevationMode] = useState<ElevationMode>('RAISE');
+  const [targetElevation, setTargetElevation] = useState<number>(1);
+  const [showElevation, setShowElevation] = useState<boolean>(true);
 
   // Canvas View state
   const [isPanMode, setIsPanMode] = useState<boolean>(false);
@@ -162,6 +190,27 @@ export const EditorView: React.FC<EditorViewProps> = ({
     ctx.fillRect(0, 0, width, height);
 
     const effectiveCellSize = baseCellSize * zoom;
+
+    // 2.5D Isometric Rendering
+    if (viewProjection === '2.5D') {
+      const { isoW, isoH } = get25DMetrics(effectiveCellSize);
+      const originX = (width / 2) + ((map.height - map.width) * (isoW / 4)) + panOffset.x;
+      const originY = (height / 2) - ((map.width + map.height) * (isoH / 4)) + panOffset.y;
+
+      renderGridMap25D(ctx, map, {
+        cellSize: effectiveCellSize,
+        showGrid,
+        colorOnlyMode: isColorOnlyMode,
+        showLabels,
+        showElevation: showElevation || activeTool === 'ELEVATION',
+        highlightCell: isPanMode ? null : hoverCoord,
+        offsetX: originX,
+        offsetY: originY,
+      });
+      return;
+    }
+
+    // 2D Top-Down Rendering
     const mapPixelW = map.width * effectiveCellSize;
     const mapPixelH = map.height * effectiveCellSize;
 
@@ -188,7 +237,17 @@ export const EditorView: React.FC<EditorViewProps> = ({
         }
 
         const tile = map.tiles[y * map.width + x] || { terrain: 'grass', obj: '' };
-        drawTile(ctx, tile, drawX, drawY, effectiveCellSize, showGrid, isColorOnlyMode, showLabels);
+        drawTile(
+          ctx,
+          tile,
+          drawX,
+          drawY,
+          effectiveCellSize,
+          showGrid,
+          isColorOnlyMode,
+          showLabels,
+          showElevation || activeTool === 'ELEVATION'
+        );
       }
     }
 
@@ -215,7 +274,20 @@ export const EditorView: React.FC<EditorViewProps> = ({
         effectiveCellSize
       );
     }
-  }, [baseCellSize, isColorOnlyMode, isPanMode, map, panOffset, showGrid, zoom, hoverCoord]);
+  }, [
+    baseCellSize,
+    isColorOnlyMode,
+    isPanMode,
+    map,
+    panOffset,
+    showGrid,
+    showLabels,
+    showElevation,
+    viewProjection,
+    activeTool,
+    zoom,
+    hoverCoord,
+  ]);
 
   useEffect(() => {
     redraw();
@@ -229,6 +301,14 @@ export const EditorView: React.FC<EditorViewProps> = ({
     const localY = screenY - rect.top;
 
     const effectiveCellSize = baseCellSize * zoom;
+
+    if (viewProjection === '2.5D') {
+      const { isoW, isoH } = get25DMetrics(effectiveCellSize);
+      const originX = (rect.width / 2) + ((map.height - map.width) * (isoW / 4)) + panOffset.x;
+      const originY = (rect.height / 2) - ((map.width + map.height) * (isoH / 4)) + panOffset.y;
+      return isoScreenToGrid(localX, localY, map, originX, originY, effectiveCellSize);
+    }
+
     const mapPixelW = map.width * effectiveCellSize;
     const mapPixelH = map.height * effectiveCellSize;
 
@@ -241,6 +321,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
     const cellX = Math.floor((localX - totalOffsetX) / effectiveCellSize);
     const cellY = Math.floor((localY - totalOffsetY) / effectiveCellSize);
 
+    if (cellX < 0 || cellX >= map.width || cellY < 0 || cellY >= map.height) return null;
     return { x: cellX, y: cellY };
   };
 
@@ -276,9 +357,26 @@ export const EditorView: React.FC<EditorViewProps> = ({
         setPaletteTab(0);
       }
       return currentMap;
+    } else if (activeTool === 'ELEVATION') {
+      const curElev = oldTile.elevation ?? 0;
+      let nextElev = curElev;
+      if (elevationMode === 'RAISE') {
+        nextElev = Math.min(6, curElev + 1);
+      } else if (elevationMode === 'LOWER') {
+        nextElev = Math.max(-3, curElev - 1);
+      } else if (elevationMode === 'SET') {
+        nextElev = targetElevation;
+      } else if (elevationMode === 'FLATTEN') {
+        nextElev = 0;
+      }
+      newTile = { ...newTile, elevation: nextElev };
     }
 
-    if (newTile.terrain === oldTile.terrain && newTile.obj === oldTile.obj) {
+    if (
+      newTile.terrain === oldTile.terrain &&
+      newTile.obj === oldTile.obj &&
+      (newTile.elevation ?? 0) === (oldTile.elevation ?? 0)
+    ) {
       return currentMap;
     }
 
@@ -311,9 +409,13 @@ export const EditorView: React.FC<EditorViewProps> = ({
     const startIdx = startY * currentMap.width + startX;
     const targetTile = currentMap.tiles[startIdx];
     const targetTerrain = targetTile.terrain;
+    const targetElev = targetTile.elevation ?? 0;
+    const isElevationFill = activeTool === 'ELEVATION';
 
-    // If already the same terrain and no object selected, return
-    if (!selectedObject && targetTerrain === selectedTerrain) return currentMap;
+    // If already the same terrain or elevation, return
+    if (!isElevationFill && !selectedObject && targetTerrain === selectedTerrain) return currentMap;
+    if (isElevationFill && elevationMode === 'SET' && targetElev === targetElevation) return currentMap;
+    if (isElevationFill && elevationMode === 'FLATTEN' && targetElev === 0) return currentMap;
 
     const mutations: TileMutation[] = [];
     const newTiles = [...currentMap.tiles];
@@ -326,9 +428,19 @@ export const EditorView: React.FC<EditorViewProps> = ({
       const idx = y * currentMap.width + x;
       const oldTile = newTiles[idx];
 
-      const newTile: GridTile = selectedObject
-        ? { ...oldTile, obj: selectedObject }
-        : { ...oldTile, terrain: selectedTerrain };
+      let newTile: GridTile;
+      if (isElevationFill) {
+        let nextElev = targetElev;
+        if (elevationMode === 'RAISE') nextElev = Math.min(6, (oldTile.elevation ?? 0) + 1);
+        else if (elevationMode === 'LOWER') nextElev = Math.max(-3, (oldTile.elevation ?? 0) - 1);
+        else if (elevationMode === 'SET') nextElev = targetElevation;
+        else if (elevationMode === 'FLATTEN') nextElev = 0;
+        newTile = { ...oldTile, elevation: nextElev };
+      } else {
+        newTile = selectedObject
+          ? { ...oldTile, obj: selectedObject }
+          : { ...oldTile, terrain: selectedTerrain };
+      }
 
       mutations.push({ index: idx, oldTile, newTile });
       newTiles[idx] = newTile;
@@ -343,9 +455,14 @@ export const EditorView: React.FC<EditorViewProps> = ({
       for (const [nx, ny] of neighbors) {
         if (nx >= 0 && nx < currentMap.width && ny >= 0 && ny < currentMap.height) {
           const nidx = ny * currentMap.width + nx;
-          if (!visited[nidx] && newTiles[nidx].terrain === targetTerrain) {
-            visited[nidx] = 1;
-            queue.push([nx, ny]);
+          if (!visited[nidx]) {
+            const matches = isElevationFill
+              ? (newTiles[nidx].elevation ?? 0) === targetElev
+              : newTiles[nidx].terrain === targetTerrain;
+            if (matches) {
+              visited[nidx] = 1;
+              queue.push([nx, ny]);
+            }
           }
         }
       }
@@ -562,6 +679,51 @@ export const EditorView: React.FC<EditorViewProps> = ({
     setShowMoreMenu(false);
   };
 
+  const handleFlattenAllElevation = () => {
+    const mutations: TileMutation[] = [];
+    const newTiles = map.tiles.map((t, idx) => {
+      if ((t.elevation ?? 0) !== 0) {
+        const newT: GridTile = { ...t, elevation: 0 };
+        mutations.push({ index: idx, oldTile: t, newTile: newT });
+        return newT;
+      }
+      return t;
+    });
+
+    if (mutations.length > 0) {
+      setUndoStack(prev => [...prev.slice(-49), mutations]);
+      setRedoStack([]);
+      updateMapState({ ...map, tiles: newTiles, updatedAt: Date.now() });
+    }
+    setShowMoreMenu(false);
+  };
+
+  const handleGenerateRollingHills = () => {
+    const mutations: TileMutation[] = [];
+    const newTiles = map.tiles.map((t, idx) => {
+      const x = idx % map.width;
+      const y = Math.floor(idx / map.width);
+      const wave1 = Math.sin((x / map.width) * Math.PI * 2) * Math.cos((y / map.height) * Math.PI * 2);
+      const wave2 = Math.sin(x / 3 + y / 2) * 0.7;
+      const elev = Math.round(wave1 * 2 + wave2);
+      const clamped = Math.max(-1, Math.min(4, elev));
+
+      if ((t.elevation ?? 0) !== clamped) {
+        const newT: GridTile = { ...t, elevation: clamped };
+        mutations.push({ index: idx, oldTile: t, newTile: newT });
+        return newT;
+      }
+      return t;
+    });
+
+    if (mutations.length > 0) {
+      setUndoStack(prev => [...prev.slice(-49), mutations]);
+      setRedoStack([]);
+      updateMapState({ ...map, tiles: newTiles, updatedAt: Date.now() });
+    }
+    setShowMoreMenu(false);
+  };
+
   const handleResizeConfirm = (newW: number, newH: number) => {
     const newTiles: GridTile[] = [];
     for (let y = 0; y < newH; y++) {
@@ -583,6 +745,45 @@ export const EditorView: React.FC<EditorViewProps> = ({
     setUndoStack([]);
     setRedoStack([]);
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      if (e.key === 'v' || e.key === 'V') {
+        setViewProjection(prev => (prev === '2D' ? '2.5D' : '2D'));
+      } else if (e.key === 'h' || e.key === 'H') {
+        setActiveTool('ELEVATION');
+      } else if (e.key === 'b' || e.key === 'B') {
+        setActiveTool('BRUSH');
+      } else if (e.key === 'e' || e.key === 'E') {
+        setActiveTool('ERASER');
+      } else if (e.key === 'f' || e.key === 'F') {
+        setActiveTool('FILL_BUCKET');
+      } else if (e.key === 'i' || e.key === 'I') {
+        setActiveTool('EYEDROPPER');
+      } else if (e.key === 'l' || e.key === 'L') {
+        setActiveTool('LABEL');
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   const activeTerrainDef = getTerrain(selectedTerrain);
   const activeObjDef = getMapObject(selectedObject);
@@ -671,6 +872,46 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5">
+          {/* 2D / 2.5D Isometric Mode Switcher */}
+          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner mr-1">
+            <button
+              onClick={() => setViewProjection('2D')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                viewProjection === '2D'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="2D Flat Top-Down View (Hotkey: V)"
+            >
+              <Grid className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">2D</span>
+            </button>
+            <button
+              onClick={() => setViewProjection('2.5D')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                viewProjection === '2.5D'
+                  ? 'bg-gradient-to-r from-indigo-600 to-sky-600 text-white shadow-md shadow-indigo-500/20'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="2.5D Isometric Diorama with Elevation Depth (Hotkey: V)"
+            >
+              <Box className="w-3.5 h-3.5 text-sky-300" />
+              <span>2.5D</span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowElevation(prev => !prev)}
+            title={showElevation ? 'Hide Elevation Badges (H)' : 'Show Elevation Badges (H)'}
+            className={`p-1.5 rounded-lg border text-xs transition-colors ${
+              showElevation || activeTool === 'ELEVATION'
+                ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300'
+                : 'border-slate-800 text-slate-400 hover:bg-slate-800'
+            }`}
+          >
+            <Mountain className="w-4 h-4" />
+          </button>
+
           <button
             onClick={() => setShowGrid(prev => !prev)}
             title="Toggle Grid Lines"
@@ -721,13 +962,27 @@ export const EditorView: React.FC<EditorViewProps> = ({
             </button>
 
             {showMoreMenu && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-30 py-1 text-xs text-slate-200">
+              <div className="absolute right-0 top-full mt-1 w-52 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-30 py-1 text-xs text-slate-200">
                 <button
                   onClick={handleFillAll}
                   className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-700 text-left"
                 >
                   <PaintBucket className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Fill All with Selected</span>
+                </button>
+                <button
+                  onClick={handleGenerateRollingHills}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-700 text-left text-emerald-300"
+                >
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Generate Rolling Hills</span>
+                </button>
+                <button
+                  onClick={handleFlattenAllElevation}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-700 text-left text-amber-300"
+                >
+                  <Minus className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Flatten All Elevation to 0</span>
                 </button>
                 <button
                   onClick={handleClearObjects}
@@ -820,6 +1075,27 @@ export const EditorView: React.FC<EditorViewProps> = ({
             <span>
               {getTerrain(map.tiles[hoverCoord.y * map.width + hoverCoord.x]?.terrain).title.split('/')[0]}
             </span>
+            {(() => {
+              const curTile = map.tiles[hoverCoord.y * map.width + hoverCoord.x];
+              const curElev = curTile?.elevation ?? 0;
+              return (
+                <>
+                  <span className="text-slate-500">•</span>
+                  <span
+                    className={`font-semibold flex items-center gap-1 ${
+                      curElev > 0
+                        ? 'text-emerald-400'
+                        : curElev < 0
+                        ? 'text-sky-400'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    <Mountain className="w-3 h-3" />
+                    Elev: {curElev > 0 ? `+${curElev}` : curElev}
+                  </span>
+                </>
+              );
+            })()}
             {map.tiles[hoverCoord.y * map.width + hoverCoord.x]?.obj && (
               <>
                 <span className="text-slate-500">•</span>
@@ -856,15 +1132,16 @@ export const EditorView: React.FC<EditorViewProps> = ({
       {/* Bottom Palette & Tool Controller */}
       <footer className="bg-slate-900 border-t border-slate-800 p-2 sm:p-3 shrink-0 z-20 space-y-2.5 shadow-2xl">
         {/* Row 1: Tools & Brush Size */}
-        <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto flex-wrap">
           {/* Tool buttons */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
             {[
-              { tool: 'BRUSH' as EditorTool, icon: Paintbrush, label: 'Brush' },
-              { tool: 'FILL_BUCKET' as EditorTool, icon: PaintBucket, label: 'Fill Bucket' },
-              { tool: 'ERASER' as EditorTool, icon: Eraser, label: 'Eraser' },
-              { tool: 'EYEDROPPER' as EditorTool, icon: Pipette, label: 'Eyedropper' },
-              { tool: 'LABEL' as EditorTool, icon: Tag, label: 'Name Tile' },
+              { tool: 'BRUSH' as EditorTool, icon: Paintbrush, label: 'Brush (B)' },
+              { tool: 'ELEVATION' as EditorTool, icon: Mountain, label: 'Elevation (H)' },
+              { tool: 'FILL_BUCKET' as EditorTool, icon: PaintBucket, label: 'Fill Bucket (F)' },
+              { tool: 'ERASER' as EditorTool, icon: Eraser, label: 'Eraser (E)' },
+              { tool: 'EYEDROPPER' as EditorTool, icon: Pipette, label: 'Eyedropper (I)' },
+              { tool: 'LABEL' as EditorTool, icon: Tag, label: 'Name Tile (L)' },
             ].map(({ tool, icon: Icon, label }) => {
               const isActive = activeTool === tool;
               return (
@@ -874,12 +1151,14 @@ export const EditorView: React.FC<EditorViewProps> = ({
                   title={label}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isActive
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      ? tool === 'ELEVATION'
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400'
+                        : 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                       : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{label}</span>
+                  <span className="hidden sm:inline">{label.split(' ')[0]}</span>
                 </button>
               );
             })}
@@ -888,8 +1167,23 @@ export const EditorView: React.FC<EditorViewProps> = ({
           {/* Active selection preview & Brush Size */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800">
-              <span className="text-[11px] text-slate-400">Painting:</span>
-              {selectedObject ? (
+              <span className="text-[11px] text-slate-400">
+                {activeTool === 'ELEVATION' ? 'Elevation:' : 'Painting:'}
+              </span>
+              {activeTool === 'ELEVATION' ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
+                  <Mountain className="w-3.5 h-3.5" />
+                  <span>
+                    {elevationMode === 'RAISE'
+                      ? 'Raise (+1)'
+                      : elevationMode === 'LOWER'
+                      ? 'Lower (-1)'
+                      : elevationMode === 'SET'
+                      ? `Set (${targetElevation > 0 ? '+' : ''}${targetElevation})`
+                      : 'Flatten (0)'}
+                  </span>
+                </div>
+              ) : selectedObject ? (
                 <div className="flex items-center gap-1 text-xs text-slate-200 font-medium">
                   <span className="text-base">{activeObjDef?.iconEmoji}</span>
                   <span className="truncate max-w-[80px] sm:max-w-[120px]">{activeObjDef?.title}</span>
@@ -929,6 +1223,95 @@ export const EditorView: React.FC<EditorViewProps> = ({
           </div>
         </div>
 
+        {/* Dedicated Elevation Sculpt Controls when ELEVATION tool is active */}
+        {activeTool === 'ELEVATION' && (
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2.5 bg-slate-950/80 border border-emerald-500/30 rounded-xl p-2 shadow-lg animate-in fade-in duration-200">
+            {/* Mode selection buttons */}
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+              <span className="text-[11px] font-semibold text-slate-400 px-2">Mode:</span>
+              {(
+                [
+                  { mode: 'RAISE' as ElevationMode, icon: ChevronsUp, label: 'Raise (+1)' },
+                  { mode: 'LOWER' as ElevationMode, icon: ChevronsDown, label: 'Lower (-1)' },
+                  {
+                    mode: 'SET' as ElevationMode,
+                    icon: Mountain,
+                    label: `Set (${targetElevation > 0 ? '+' : ''}${targetElevation})`,
+                  },
+                  { mode: 'FLATTEN' as ElevationMode, icon: Minus, label: 'Flatten (0)' },
+                ] as const
+              ).map(({ mode, icon: ModeIcon, label }) => (
+                <button
+                  key={mode}
+                  onClick={() => setElevationMode(mode)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    elevationMode === mode
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <ModeIcon className="w-3.5 h-3.5" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Quick target elevation selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-400">Target Height:</span>
+              <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                {[-2, -1, 0, 1, 2, 3, 4, 5, 6].map(lvl => (
+                  <button
+                    key={lvl}
+                    onClick={() => {
+                      setTargetElevation(lvl);
+                      setElevationMode('SET');
+                    }}
+                    className={`w-7 h-6 rounded-md text-xs font-mono font-bold transition-all ${
+                      targetElevation === lvl && elevationMode === 'SET'
+                        ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400'
+                        : lvl === 0
+                        ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        : lvl > 0
+                        ? 'text-emerald-400 hover:bg-slate-800'
+                        : 'text-sky-400 hover:bg-slate-800'
+                    }`}
+                    title={
+                      lvl < 0
+                        ? `Sunken / Trench (${lvl})`
+                        : lvl === 0
+                        ? 'Ground Level (0)'
+                        : `Elevation (+${lvl})`
+                    }
+                  >
+                    {lvl > 0 ? `+${lvl}` : lvl}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick generators */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleGenerateRollingHills}
+                title="Procedurally generate natural rolling hills"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border border-emerald-500/30 text-xs font-semibold transition-colors"
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>Rolling Hills</span>
+              </button>
+              <button
+                onClick={handleFlattenAllElevation}
+                title="Reset all tiles to 0 ground level"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 text-xs font-semibold transition-colors"
+              >
+                <Minus className="w-3.5 h-3.5" />
+                <span>Flatten All</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Row 2: Category Tabs */}
         <div className="flex items-center justify-between max-w-7xl mx-auto border-t border-slate-800/60 pt-2">
           <div className="flex items-center gap-2">
@@ -951,6 +1334,20 @@ export const EditorView: React.FC<EditorViewProps> = ({
               }`}
             >
               Structures & Objects ({MAP_OBJECTS.length + customObjects.length})
+            </button>
+            <button
+              onClick={() => {
+                setPaletteTab(2);
+                setActiveTool('ELEVATION');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                paletteTab === 2
+                  ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-700/60 shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Mountain className="w-3.5 h-3.5" />
+              <span>Elevation & Topography</span>
             </button>
           </div>
 
@@ -984,13 +1381,14 @@ export const EditorView: React.FC<EditorViewProps> = ({
               </button>
 
               {[...TERRAIN_TYPES, ...customTerrains].map(terrain => {
-                const isSelected = selectedTerrain === terrain.id && !selectedObject;
+                const isSelected = selectedTerrain === terrain.id && !selectedObject && activeTool !== 'ELEVATION';
                 return (
                   <button
                     key={terrain.id}
                     onClick={() => {
                       setSelectedTerrain(terrain.id);
                       setSelectedObject('');
+                      if (activeTool === 'ELEVATION') setActiveTool('BRUSH');
                     }}
                     className={`flex flex-col items-center justify-between p-1.5 w-20 h-14 rounded-lg border transition-all relative ${
                       isSelected
@@ -1015,7 +1413,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 );
               })}
             </div>
-          ) : (
+          ) : paletteTab === 1 ? (
             <div className="flex items-center gap-2 min-w-max">
               {/* Add Custom Object Marker card */}
               <button
@@ -1031,11 +1429,14 @@ export const EditorView: React.FC<EditorViewProps> = ({
               </button>
 
               {[...MAP_OBJECTS, ...customObjects].map(obj => {
-                const isSelected = selectedObject === obj.id;
+                const isSelected = selectedObject === obj.id && activeTool !== 'ELEVATION';
                 return (
                   <button
                     key={obj.id}
-                    onClick={() => setSelectedObject(obj.id)}
+                    onClick={() => {
+                      setSelectedObject(obj.id);
+                      if (activeTool === 'ELEVATION') setActiveTool('BRUSH');
+                    }}
                     className={`flex flex-col items-center justify-between p-1.5 w-20 h-14 rounded-lg border transition-all relative ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300 ring-2 ring-indigo-500/30 font-semibold'
@@ -1048,6 +1449,48 @@ export const EditorView: React.FC<EditorViewProps> = ({
                     <span className="text-xl leading-none">{obj.iconEmoji}</span>
                     <span className="text-[10px] truncate w-full text-center">
                       {obj.title.split('/')[0].trim()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* Elevation & Topography Presets */
+            <div className="flex items-center gap-2 min-w-max">
+              {[
+                { level: -2, name: 'Deep Abyss', desc: 'Chasm / Trench', color: '#1e1b4b', border: '#4338ca', icon: '⚓' },
+                { level: -1, name: 'Sunken Bed', desc: 'Depression / Lake', color: '#0f3b46', border: '#14b8a6', icon: '🌊' },
+                { level: 0, name: 'Ground Plains', desc: 'Ground Level (0)', color: '#1e293b', border: '#475569', icon: '🌱' },
+                { level: 1, name: 'Low Hills', desc: 'Gentle Slope (+1)', color: '#14532d', border: '#22c55e', icon: '🌿' },
+                { level: 2, name: 'High Plateau', desc: 'Raised Mesa (+2)', color: '#713f12', border: '#eab308', icon: '⛰️' },
+                { level: 3, name: 'Mountain Ridge', desc: 'Highlands (+3)', color: '#78350f', border: '#f97316', icon: '🏔️' },
+                { level: 4, name: 'High Peaks', desc: 'Crest (+4)', color: '#581c87', border: '#a855f7', icon: '🗻' },
+                { level: 5, name: 'Alpine Summit', desc: 'Glacier Crest (+5)', color: '#1e3a8a', border: '#38bdf8', icon: '❄️' },
+                { level: 6, name: 'Sky Pinnacle', desc: 'Mythic Height (+6)', color: '#4c1d95', border: '#c084fc', icon: '⚡' },
+              ].map(preset => {
+                const isSelected = activeTool === 'ELEVATION' && elevationMode === 'SET' && targetElevation === preset.level;
+                return (
+                  <button
+                    key={preset.level}
+                    onClick={() => {
+                      setActiveTool('ELEVATION');
+                      setElevationMode('SET');
+                      setTargetElevation(preset.level);
+                    }}
+                    className={`flex flex-col items-center justify-between p-1.5 w-24 h-14 rounded-lg border transition-all relative ${
+                      isSelected
+                        ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300 ring-2 ring-emerald-500/40 font-semibold'
+                        : 'border-slate-800 bg-slate-800/40 text-slate-400 hover:bg-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{preset.icon}</span>
+                      <span className="text-xs font-mono font-bold text-slate-200">
+                        {preset.level > 0 ? `+${preset.level}` : preset.level}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-medium truncate w-full text-center text-slate-300">
+                      {preset.name}
                     </span>
                   </button>
                 );

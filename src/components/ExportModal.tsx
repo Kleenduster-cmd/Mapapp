@@ -34,6 +34,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [includeTitle, setIncludeTitle] = useState(true);
   const [includeLegend, setIncludeLegend] = useState(true);
   const [includeLabels, setIncludeLabels] = useState(true);
+  const [includeElevation, setIncludeElevation] = useState(true);
+  const [viewProjection, setViewProjection] = useState<'2D' | '2.5D'>('2D');
   const [colorOnlyMode, setColorOnlyMode] = useState(false);
   const [cellSize, setCellSize] = useState(48);
 
@@ -61,6 +63,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           includeLegend,
           colorOnlyMode,
           includeLabels,
+          includeElevation,
         });
         downloadFile(blob, `${worldMap.name.toLowerCase().replace(/\s+/g, '_')}_world.png`);
       } else if (map) {
@@ -71,8 +74,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           includeLegend,
           colorOnlyMode,
           includeLabels,
+          includeElevation,
+          viewProjection,
         });
-        downloadFile(blob, `${map.name.toLowerCase().replace(/\s+/g, '_')}.png`);
+        downloadFile(blob, `${map.name.toLowerCase().replace(/\s+/g, '_')}_${viewProjection.toLowerCase()}.png`);
       }
       onClose();
     } catch (e) {
@@ -151,6 +156,36 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </h3>
 
               <div className="space-y-3 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
+                {!isWorld && (
+                  <div className="pb-3 border-b border-slate-700/60 flex items-center justify-between">
+                    <span className="text-slate-200 font-medium text-xs">Perspective / Projection</span>
+                    <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setViewProjection('2D')}
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                          viewProjection === '2D'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        2D Top-Down
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewProjection('2.5D')}
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                          viewProjection === '2.5D'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        2.5D Isometric
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {isWorld ? (
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
@@ -183,6 +218,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <span className="text-slate-200">
                     {isWorld ? 'Show Local Tile Grid' : 'Include Grid Lines'}
                   </span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeElevation}
+                    onChange={e => setIncludeElevation(e.target.checked)}
+                    className="w-4 h-4 rounded-sm border-slate-600 bg-slate-700 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-slate-200">Include Elevation Badges & Depth</span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer">

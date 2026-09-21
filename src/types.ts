@@ -19,6 +19,7 @@ export interface GridTile {
   terrain: string; // terrain id
   obj: string;     // object id or empty/none
   label?: string;  // custom name/label for the tile
+  elevation?: number; // stepped elevation (-3 to +6, 0 default)
 }
 
 export interface GridMap {
@@ -43,7 +44,11 @@ export interface WorldMap {
   description: string;
 }
 
-export type EditorTool = 'BRUSH' | 'FILL_BUCKET' | 'ERASER' | 'EYEDROPPER' | 'LABEL';
+export type EditorTool = 'BRUSH' | 'FILL_BUCKET' | 'ERASER' | 'EYEDROPPER' | 'LABEL' | 'ELEVATION';
+
+export type ElevationMode = 'RAISE' | 'LOWER' | 'SET' | 'FLATTEN';
+
+export type ViewProjection = '2D' | '2.5D';
 
 export interface TileMutation {
   index: number;

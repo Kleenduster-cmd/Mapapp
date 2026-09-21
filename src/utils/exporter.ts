@@ -1,5 +1,5 @@
 import { GridMap, WorldMap } from '../types';
-import { drawTile, renderSeamlessWorld } from './canvasRenderer';
+import { drawTile, renderSeamlessWorld, renderGridMap25D, get25DMetrics } from './canvasRenderer';
 import { getTerrain } from '../constants/tiles';
 
 export interface MapExportOptions {
@@ -9,6 +9,8 @@ export interface MapExportOptions {
   includeLegend: boolean;
   colorOnlyMode: boolean;
   includeLabels?: boolean;
+  includeElevation?: boolean;
+  viewProjection?: '2D' | '2.5D';
 }
 
 export interface WorldExportOptions {
@@ -18,6 +20,7 @@ export interface WorldExportOptions {
   includeLegend: boolean;
   colorOnlyMode: boolean;
   includeLabels?: boolean;
+  includeElevation?: boolean;
 }
 
 export async function renderMapToBlob(map: GridMap, options: MapExportOptions): Promise<Blob> {
@@ -28,68 +31,98 @@ export async function renderMapToBlob(map: GridMap, options: MapExportOptions): 
     includeLegend,
     colorOnlyMode,
     includeLabels = true,
+    includeElevation = false,
+    viewProjection = '2D',
   } = options;
 
   const headerHeight = includeTitle ? 80 : 0;
   const legendHeight = includeLegend ? 90 : 0;
 
-  const width = map.width * cellSize;
-  const height = map.height * cellSize + headerHeight + legendHeight;
+  let width: number;
+  let height: number;
+
+  if (viewProjection === '2.5D') {
+    const { isoW, isoH, stepH, pedestalH } = get25DMetrics(cellSize);
+    width = Math.round((map.width + map.height) * (isoW / 2) + 100);
+    const contentH = Math.round((map.width + map.height) * (isoH / 2) + stepH * 7 + pedestalH + 80);
+    height = contentH + headerHeight + legendHeight;
+  } else {
+    width = map.width * cellSize;
+    height = map.height * cellSize + headerHeight + legendHeight;
+  }
 
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = Math.max(300, width);
+  canvas.height = Math.max(200, height);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not create canvas context');
 
   // Background
   ctx.fillStyle = '#0F172A';
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Header Banner
   if (includeTitle) {
     ctx.fillStyle = '#1E293B';
-    ctx.fillRect(0, 0, width, headerHeight);
+    ctx.fillRect(0, 0, canvas.width, headerHeight);
 
     ctx.fillStyle = '#F8FAFC';
-    ctx.font = `bold ${Math.min(24, Math.max(16, width / 20))}px sans-serif`;
+    ctx.font = `bold ${Math.min(24, Math.max(16, canvas.width / 24))}px sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(map.name, 20, 30);
+    ctx.fillText(`${map.name} ${viewProjection === '2.5D' ? '(2.5D Isometric)' : ''}`, 20, 30);
 
     ctx.fillStyle = '#94A3B8';
     ctx.font = '13px sans-serif';
-    ctx.fillText(`${map.width} × ${map.height} Grid Map • ${map.tiles.length} Tiles`, 20, 56);
+    ctx.fillText(`${map.width} × ${map.height} Grid Map • ${map.tiles.length} Tiles • Elevation Enabled`, 20, 56);
   }
 
-  // Draw Grid Tiles
+  // Draw Tiles
   const mapOffsetY = headerHeight;
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      const tile = map.tiles[y * map.width + x] || { terrain: 'grass', obj: '' };
-      drawTile(
-        ctx,
-        tile,
-        x * cellSize,
-        mapOffsetY + y * cellSize,
-        cellSize,
-        includeGridLines,
-        colorOnlyMode,
-        includeLabels
-      );
-    }
-  }
 
-  // Draw Map Outer Border
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(0, mapOffsetY, map.width * cellSize, map.height * cellSize);
+  if (viewProjection === '2.5D') {
+    const { isoW, isoH } = get25DMetrics(cellSize);
+    const originX = (canvas.width / 2) + ((map.height - map.width) * (isoW / 4));
+    const originY = mapOffsetY + 40;
+
+    renderGridMap25D(ctx, map, {
+      cellSize,
+      showGrid: includeGridLines,
+      colorOnlyMode,
+      showLabels: includeLabels,
+      showElevation: includeElevation,
+      offsetX: originX,
+      offsetY: originY,
+    });
+  } else {
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const tile = map.tiles[y * map.width + x] || { terrain: 'grass', obj: '' };
+        drawTile(
+          ctx,
+          tile,
+          x * cellSize,
+          mapOffsetY + y * cellSize,
+          cellSize,
+          includeGridLines,
+          colorOnlyMode,
+          includeLabels,
+          includeElevation
+        );
+      }
+    }
+
+    // Draw Map Outer Border
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, mapOffsetY, map.width * cellSize, map.height * cellSize);
+  }
 
   // Tile Legend Footer
   if (includeLegend) {
-    const legendY = mapOffsetY + map.height * cellSize;
+    const legendY = canvas.height - legendHeight;
     ctx.fillStyle = '#1E293B';
-    ctx.fillRect(0, legendY, width, legendHeight);
+    ctx.fillRect(0, legendY, canvas.width, legendHeight);
 
     ctx.fillStyle = '#CBD5E1';
     ctx.font = 'bold 12px sans-serif';
@@ -120,7 +153,7 @@ export async function renderMapToBlob(map: GridMap, options: MapExportOptions): 
       ctx.fillText(label, curX + swatchSize + 6, legendY + 52);
 
       curX += ctx.measureText(label).width + swatchSize + 22;
-      if (curX > width - 100) break;
+      if (curX > canvas.width - 100) break;
     }
   }
 
