@@ -20,10 +20,12 @@ object TileRenderer {
         x: Float,
         y: Float,
         cellSize: Float,
-        showGrid: Boolean = true
+        showGrid: Boolean = true,
+        colorOnlyMode: Boolean = false,
+        colorOverride: Long? = null
     ) {
         val terrain = tile.terrain
-        val baseColor = Color(terrain.baseColor)
+        val baseColor = colorOverride?.let { Color(it) } ?: Color(terrain.baseColor)
         val detailColor = Color(terrain.detailColor)
 
         // 1. Draw base terrain background
@@ -33,8 +35,8 @@ object TileRenderer {
             size = Size(cellSize, cellSize)
         )
 
-        // 2. Draw terrain procedural patterns
-        if (cellSize >= 12f) {
+        // 2. Draw terrain procedural patterns (skipped in color-based mode)
+        if (!colorOnlyMode && cellSize >= 12f) {
             drawTerrainDetails(drawScope, terrain, x, y, cellSize, detailColor)
         }
 
@@ -46,7 +48,7 @@ object TileRenderer {
         // 4. Draw grid border if requested
         if (showGrid && cellSize >= 8f) {
             drawScope.drawRect(
-                color = Color.Black.copy(alpha = 0.18f),
+                color = Color.Black.copy(alpha = if (colorOnlyMode) 0.28f else 0.18f),
                 topLeft = Offset(x, y),
                 size = Size(cellSize, cellSize),
                 style = Stroke(width = if (cellSize > 24f) 1f else 0.5f)

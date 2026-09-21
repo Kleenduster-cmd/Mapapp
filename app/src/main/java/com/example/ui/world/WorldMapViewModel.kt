@@ -19,6 +19,8 @@ data class WorldMapUiState(
     val selectedSector: Pair<Int, Int>? = null,
     val showSectorBorders: Boolean = true,
     val isSeamlessMode: Boolean = false,
+    val isColorOnlyMode: Boolean = false,
+    val showLegendDialog: Boolean = false,
     val zoom: Float = 1f,
     val isLoading: Boolean = false
 )
@@ -97,10 +99,18 @@ class WorldMapViewModel(
         }
     }
 
-    fun createAndLinkNewMap(col: Int, row: Int, name: String, defaultTerrain: TerrainType, onCreated: (Long) -> Unit) {
+    fun createAndLinkNewMap(
+        col: Int,
+        row: Int,
+        name: String,
+        width: Int = 16,
+        height: Int = 16,
+        defaultTerrain: TerrainType,
+        onCreated: (Long) -> Unit
+    ) {
         val currentWorld = _uiState.value.worldMap ?: return
         viewModelScope.launch {
-            val newMap = GridMap.createEmpty(name = name, width = 16, height = 16, defaultTerrain = defaultTerrain)
+            val newMap = GridMap.createEmpty(name = name, width = width, height = height, defaultTerrain = defaultTerrain)
             val newMapId = repository.saveMap(newMap)
             val updatedWorld = currentWorld.withSlotLinked(col, row, newMapId)
             repository.saveWorldMap(updatedWorld)
@@ -118,6 +128,14 @@ class WorldMapViewModel(
             }
             onCreated(newMapId)
         }
+    }
+
+    fun toggleColorOnlyMode() {
+        _uiState.update { it.copy(isColorOnlyMode = !it.isColorOnlyMode) }
+    }
+
+    fun setShowLegendDialog(show: Boolean) {
+        _uiState.update { it.copy(showLegendDialog = show) }
     }
 
     fun toggleSeamlessMode() {

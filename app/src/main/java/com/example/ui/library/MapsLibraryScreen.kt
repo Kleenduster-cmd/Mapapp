@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -624,14 +625,31 @@ fun CreateMapDialog(
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("New Realm") }
-    var selectedPreset by remember { mutableStateOf(Pair(16, 16)) }
+    var width by remember { mutableIntStateOf(16) }
+    var height by remember { mutableIntStateOf(16) }
+    var widthText by remember { mutableStateOf("16") }
+    var heightText by remember { mutableStateOf("16") }
     var selectedTerrain by remember { mutableStateOf(TerrainType.GRASS) }
 
+    fun updateWidth(newW: Int) {
+        val clamped = newW.coerceIn(2, 64)
+        width = clamped
+        widthText = clamped.toString()
+    }
+
+    fun updateHeight(newH: Int) {
+        val clamped = newH.coerceIn(2, 64)
+        height = clamped
+        heightText = clamped.toString()
+    }
+
     val presets = listOf(
-        Pair(10, 10) to "10×10 (Small)",
-        Pair(16, 16) to "16×16 (Standard)",
-        Pair(20, 20) to "20×20 (Large)",
-        Pair(24, 24) to "24×24 (Epic)"
+        Pair(8, 8) to "8×8",
+        Pair(12, 12) to "12×12",
+        Pair(16, 16) to "16×16",
+        Pair(20, 20) to "20×20",
+        Pair(24, 24) to "24×24",
+        Pair(32, 32) to "32×32"
     )
 
     AlertDialog(
@@ -646,23 +664,99 @@ fun CreateMapDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("new_map_name_input")
                 )
+
                 Spacer(modifier = Modifier.height(14.dp))
-                Text("Grid Dimensions:", style = MaterialTheme.typography.labelMedium)
-                Spacer(modifier = Modifier.height(6.dp))
+
+                // Dimensions Controls
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    presets.forEach { (dims, label) ->
+                    Text("Grid Dimensions:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "${width} × ${height} (${width * height} cells)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Width Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("W:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
+                    IconButton(onClick = { updateWidth(width - 1) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease width")
+                    }
+                    OutlinedTextField(
+                        value = widthText,
+                        onValueChange = {
+                            widthText = it
+                            it.toIntOrNull()?.let { w -> if (w in 2..64) width = w }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("new_map_width_input"),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    )
+                    IconButton(onClick = { updateWidth(width + 1) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase width")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Height Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("H:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
+                    IconButton(onClick = { updateHeight(height - 1) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease height")
+                    }
+                    OutlinedTextField(
+                        value = heightText,
+                        onValueChange = {
+                            heightText = it
+                            it.toIntOrNull()?.let { h -> if (h in 2..64) height = h }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("new_map_height_input"),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    )
+                    IconButton(onClick = { updateHeight(height + 1) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase height")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Presets
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    presets.take(4).forEach { (dims, label) ->
                         FilterChip(
-                            selected = selectedPreset == dims,
-                            onClick = { selectedPreset = dims },
-                            label = { Text(label.split(" ").first(), fontSize = 11.sp) }
+                            selected = width == dims.first && height == dims.second,
+                            onClick = {
+                                updateWidth(dims.first)
+                                updateHeight(dims.second)
+                            },
+                            label = { Text(label, fontSize = 11.sp) }
                         )
                     }
                 }
+
                 Spacer(modifier = Modifier.height(14.dp))
-                Text("Base Terrain:", style = MaterialTheme.typography.labelMedium)
+                Text("Base Terrain:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -680,7 +774,7 @@ fun CreateMapDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(name, selectedPreset.first, selectedPreset.second, selectedTerrain) },
+                onClick = { onConfirm(name, width, height, selectedTerrain) },
                 enabled = name.isNotBlank(),
                 modifier = Modifier.testTag("confirm_create_map")
             ) {
@@ -699,12 +793,14 @@ fun CreateWorldDialog(
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("New World Map") }
-    var selectedPreset by remember { mutableStateOf(Pair(3, 3)) }
+    var cols by remember { mutableIntStateOf(3) }
+    var rows by remember { mutableIntStateOf(3) }
 
     val presets = listOf(
-        Pair(2, 2) to "2×2 (4 Sectors)",
-        Pair(3, 3) to "3×3 (9 Sectors)",
-        Pair(4, 4) to "4×4 (16 Sectors)"
+        Pair(2, 2) to "2×2",
+        Pair(3, 3) to "3×3",
+        Pair(4, 4) to "4×4",
+        Pair(5, 5) to "5×5"
     )
 
     AlertDialog(
@@ -713,7 +809,7 @@ fun CreateWorldDialog(
         text = {
             Column {
                 Text(
-                    text = "A world map provides a macro grid where each sector is connected to a local map.",
+                    text = "A world map connects local grid maps together into a seamless macro world.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -726,17 +822,90 @@ fun CreateWorldDialog(
                     modifier = Modifier.fillMaxWidth().testTag("new_world_name_input")
                 )
                 Spacer(modifier = Modifier.height(14.dp))
-                Text("World Size:", style = MaterialTheme.typography.labelMedium)
-                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("World Grid Layout:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "${cols} × ${rows} (${cols * rows} sectors)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Columns Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("Cols:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.width(36.dp))
+                    IconButton(
+                        onClick = { if (cols > 1) cols-- },
+                        modifier = Modifier.size(36.dp).testTag("world_cols_minus")
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease columns")
+                    }
+                    Text(
+                        text = cols.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    IconButton(
+                        onClick = { if (cols < 8) cols++ },
+                        modifier = Modifier.size(36.dp).testTag("world_cols_plus")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase columns")
+                    }
+                }
+
+                // Rows Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("Rows:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.width(36.dp))
+                    IconButton(
+                        onClick = { if (rows > 1) rows-- },
+                        modifier = Modifier.size(36.dp).testTag("world_rows_minus")
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease rows")
+                    }
+                    Text(
+                        text = rows.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    IconButton(
+                        onClick = { if (rows < 8) rows++ },
+                        modifier = Modifier.size(36.dp).testTag("world_rows_plus")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase rows")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     presets.forEach { (dims, label) ->
                         FilterChip(
-                            selected = selectedPreset == dims,
-                            onClick = { selectedPreset = dims },
-                            label = { Text(label) }
+                            selected = cols == dims.first && rows == dims.second,
+                            onClick = {
+                                cols = dims.first
+                                rows = dims.second
+                            },
+                            label = { Text(label, fontSize = 11.sp) }
                         )
                     }
                 }
@@ -744,7 +913,7 @@ fun CreateWorldDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(name, selectedPreset.first, selectedPreset.second) },
+                onClick = { onConfirm(name, cols, rows) },
                 enabled = name.isNotBlank(),
                 modifier = Modifier.testTag("confirm_create_world")
             ) {

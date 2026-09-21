@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Grid3x3
 import androidx.compose.material.icons.filled.GridOn
@@ -37,7 +40,9 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ViewCompact
 import androidx.compose.material3.AlertDialog
@@ -92,6 +97,7 @@ import com.example.data.model.GridTile
 import com.example.data.model.TerrainType
 import com.example.data.model.WorldMap
 import com.example.ui.components.ExportWorldMapDialog
+import com.example.ui.components.TileLegendDialog
 import com.example.ui.components.TileRenderer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -171,6 +177,18 @@ fun WorldMapScreen(
                         )
                     }
 
+                    // Tile & Color Legend
+                    IconButton(
+                        onClick = { viewModel.setShowLegendDialog(true) },
+                        modifier = Modifier.testTag("world_legend_button")
+                    ) {
+                        Icon(
+                            Icons.Default.Palette,
+                            contentDescription = "Tile & Color Legend",
+                            tint = if (state.isColorOnlyMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     // Export World Map
                     IconButton(
                         onClick = { showExportDialog = true },
@@ -188,6 +206,22 @@ fun WorldMapScreen(
                             expanded = showOverflowMenu,
                             onDismissRequest = { showOverflowMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Tile & Color Legend") },
+                                leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.setShowLegendDialog(true)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (state.isColorOnlyMode) "Switch to Illustrated View" else "Switch to Color-Based View") },
+                                leadingIcon = { Icon(Icons.Default.ColorLens, contentDescription = null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.toggleColorOnlyMode()
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Rename World Map") },
                                 leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
@@ -277,6 +311,7 @@ fun WorldMapScreen(
                         worldMap = world,
                         connectedMaps = state.connectedMaps,
                         showSectorBorders = state.showSectorBorders,
+                        colorOnlyMode = state.isColorOnlyMode,
                         onSectorClicked = { c, r -> viewModel.selectSector(c, r) }
                     )
                 } else {
@@ -284,6 +319,7 @@ fun WorldMapScreen(
                     SectorGridLayout(
                         worldMap = world,
                         connectedMaps = state.connectedMaps,
+                        colorOnlyMode = state.isColorOnlyMode,
                         onSectorClicked = { c, r -> viewModel.selectSector(c, r) },
                         onQuickOpenEditor = { mapId -> onOpenMapEditor(mapId, world.id) }
                     )
@@ -520,13 +556,35 @@ fun WorldMapScreen(
         val (col, row) = state.selectedSector!!
         CreateSectorMapDialog(
             defaultName = "${world.name} - Sector (${col + 1},${row + 1})",
-            onConfirm = { mapName, terrain ->
-                viewModel.createAndLinkNewMap(col, row, mapName, terrain) { newMapId ->
+            onConfirm = { mapName, width, height, terrain ->
+                viewModel.createAndLinkNewMap(col, row, mapName, width, height, terrain) { newMapId ->
                     showCreateNewMapDialog = false
                     onOpenMapEditor(newMapId, world.id)
                 }
             },
             onDismiss = { showCreateNewMapDialog = false }
+        )
+    }
+
+    // Tile Legend Dialog
+    if (state.showLegendDialog) {
+        val allTiles = remember(state.connectedMaps) {
+            state.connectedMaps.values.flatMap { it.tiles }
+        }
+        val compositeMap = remember(world, allTiles) {
+            GridMap(
+                id = world.id,
+                name = world.name,
+                width = 1,
+                height = allTiles.size,
+                tiles = allTiles
+            )
+        }
+        TileLegendDialog(
+            map = compositeMap,
+            isColorOnlyMode = state.isColorOnlyMode,
+            onToggleColorOnlyMode = { viewModel.toggleColorOnlyMode() },
+            onDismiss = { viewModel.setShowLegendDialog(false) }
         )
     }
 
@@ -569,6 +627,7 @@ fun WorldMapScreen(
 fun SectorGridLayout(
     worldMap: WorldMap,
     connectedMaps: Map<Long, GridMap>,
+    colorOnlyMode: Boolean = false,
     onSectorClicked: (Int, Int) -> Unit,
     onQuickOpenEditor: (Long) -> Unit
 ) {
@@ -591,6 +650,7 @@ fun SectorGridLayout(
                         col = c,
                         row = r,
                         map = map,
+                        colorOnlyMode = colorOnlyMode,
                         onClick = { onSectorClicked(c, r) },
                         onEdit = { map?.id?.let { onQuickOpenEditor(it) } }
                     )
@@ -605,6 +665,7 @@ fun SectorCard(
     col: Int,
     row: Int,
     map: GridMap?,
+    colorOnlyMode: Boolean = false,
     onClick: () -> Unit,
     onEdit: () -> Unit
 ) {
@@ -631,7 +692,8 @@ fun SectorCard(
                                 x = x * cs,
                                 y = y * cs,
                                 cellSize = cs,
-                                showGrid = false
+                                showGrid = false,
+                                colorOnlyMode = colorOnlyMode
                             )
                         }
                     }
@@ -734,6 +796,7 @@ fun SeamlessWorldCanvas(
     worldMap: WorldMap,
     connectedMaps: Map<Long, GridMap>,
     showSectorBorders: Boolean,
+    colorOnlyMode: Boolean = false,
     onSectorClicked: (Int, Int) -> Unit
 ) {
     var zoom by remember { mutableFloatStateOf(1f) }
@@ -776,13 +839,16 @@ fun SeamlessWorldCanvas(
                     val mapId = worldMap.getMapId(sCol, sRow)
                     val map = mapId?.let { connectedMaps[it] }
 
+                    val currentSectorCols = map?.width ?: sectorCols
+                    val currentSectorRows = map?.height ?: sectorRows
+
                     val sectorX = originX + sCol * sectorCols * effectiveCellSize
                     val sectorY = originY + sRow * sectorRows * effectiveCellSize
                     val sectorSize = sectorCols * effectiveCellSize
 
                     if (map != null) {
-                        for (y in 0 until sectorRows) {
-                            for (x in 0 until sectorCols) {
+                        for (y in 0 until map.height) {
+                            for (x in 0 until map.width) {
                                 val tile = map.getTile(x, y)
                                 val cellX = sectorX + x * effectiveCellSize
                                 val cellY = sectorY + y * effectiveCellSize
@@ -799,7 +865,8 @@ fun SeamlessWorldCanvas(
                                     x = cellX,
                                     y = cellY,
                                     cellSize = effectiveCellSize,
-                                    showGrid = false
+                                    showGrid = false,
+                                    colorOnlyMode = colorOnlyMode
                                 )
                             }
                         }
@@ -830,17 +897,21 @@ fun SeamlessWorldCanvas(
 @Composable
 fun CreateSectorMapDialog(
     defaultName: String,
-    onConfirm: (String, TerrainType) -> Unit,
+    onConfirm: (String, Int, Int, TerrainType) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(defaultName) }
+    var width by remember { mutableIntStateOf(16) }
+    var height by remember { mutableIntStateOf(16) }
+    var widthText by remember { mutableStateOf("16") }
+    var heightText by remember { mutableStateOf("16") }
     var selectedTerrain by remember { mutableStateOf(TerrainType.GRASS) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create Sector Map") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -848,6 +919,113 @@ fun CreateSectorMapDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("sector_map_name_input")
                 )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Dimensions Controls
+                Text("Dimensions (2–64):", style = MaterialTheme.typography.labelMedium)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Width field with steppers
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Width: $width", style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val nw = (width - 1).coerceAtLeast(2)
+                                    width = nw
+                                    widthText = nw.toString()
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "Decrease width")
+                            }
+                            OutlinedTextField(
+                                value = widthText,
+                                onValueChange = { text ->
+                                    widthText = text
+                                    text.toIntOrNull()?.let { v ->
+                                        if (v in 2..64) width = v
+                                    }
+                                },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = {
+                                    val nw = (width + 1).coerceAtMost(64)
+                                    width = nw
+                                    widthText = nw.toString()
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Increase width")
+                            }
+                        }
+                    }
+
+                    // Height field with steppers
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Height: $height", style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val nh = (height - 1).coerceAtLeast(2)
+                                    height = nh
+                                    heightText = nh.toString()
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "Decrease height")
+                            }
+                            OutlinedTextField(
+                                value = heightText,
+                                onValueChange = { text ->
+                                    heightText = text
+                                    text.toIntOrNull()?.let { v ->
+                                        if (v in 2..64) height = v
+                                    }
+                                },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = {
+                                    val nh = (height + 1).coerceAtMost(64)
+                                    height = nh
+                                    heightText = nh.toString()
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Increase height")
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                // Quick Presets
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf(8 to 8, 12 to 12, 16 to 16, 24 to 24, 32 to 32).forEach { (w, h) ->
+                        FilterChip(
+                            selected = width == w && height == h,
+                            onClick = {
+                                width = w
+                                height = h
+                                widthText = w.toString()
+                                heightText = h.toString()
+                            },
+                            label = { Text("${w}×${h}", fontSize = 11.sp) }
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
                 Text("Base Terrain:", style = MaterialTheme.typography.labelMedium)
                 Spacer(modifier = Modifier.height(6.dp))
@@ -867,8 +1045,8 @@ fun CreateSectorMapDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(name, selectedTerrain) },
-                enabled = name.isNotBlank(),
+                onClick = { onConfirm(name, width, height, selectedTerrain) },
+                enabled = name.isNotBlank() && width in 2..64 && height in 2..64,
                 modifier = Modifier.testTag("confirm_create_sector_map")
             ) {
                 Text("Create & Edit")
@@ -926,17 +1104,31 @@ fun ResizeWorldDialog(
     onConfirm: (Int, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedPreset by remember { mutableStateOf(Pair(currentCols, currentRows)) }
+    var cols by remember { mutableIntStateOf(currentCols) }
+    var rows by remember { mutableIntStateOf(currentRows) }
+
     val presets = listOf(
-        Pair(2, 2) to "2×2 World (4 Sectors)",
-        Pair(3, 3) to "3×3 World (9 Sectors)",
-        Pair(4, 4) to "4×4 World (16 Sectors)",
-        Pair(5, 5) to "5×5 World (25 Sectors)"
+        Pair(2, 2) to "2×2",
+        Pair(3, 3) to "3×3",
+        Pair(4, 4) to "4×4",
+        Pair(5, 5) to "5×5",
+        Pair(6, 6) to "6×6"
     )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Resize World Dimensions") },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.GridOn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Resize World Dimensions")
+            }
+        },
         text = {
             Column {
                 Text(
@@ -944,19 +1136,112 @@ fun ResizeWorldDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                presets.forEach { (dims, label) ->
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Dimensions preview
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { selectedPreset = dims }
-                            .padding(vertical = 6.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text(
+                            text = "${cols} × ${rows} Sectors",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "${cols * rows} total sectors",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Columns Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("Columns:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
+                    IconButton(
+                        onClick = { if (cols > 1) cols-- },
+                        modifier = Modifier.size(36.dp).testTag("world_cols_minus_button")
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease columns")
+                    }
+                    Text(
+                        text = cols.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
+                    IconButton(
+                        onClick = { if (cols < 8) cols++ },
+                        modifier = Modifier.size(36.dp).testTag("world_cols_plus_button")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase columns")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Rows Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("Rows:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
+                    IconButton(
+                        onClick = { if (rows > 1) rows-- },
+                        modifier = Modifier.size(36.dp).testTag("world_rows_minus_button")
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease rows")
+                    }
+                    Text(
+                        text = rows.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
+                    IconButton(
+                        onClick = { if (rows < 8) rows++ },
+                        modifier = Modifier.size(36.dp).testTag("world_rows_plus_button")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase rows")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("Quick Presets:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    presets.forEach { (dims, label) ->
                         FilterChip(
-                            selected = selectedPreset == dims,
-                            onClick = { selectedPreset = dims },
-                            label = { Text(label) }
+                            selected = cols == dims.first && rows == dims.second,
+                            onClick = {
+                                cols = dims.first
+                                rows = dims.second
+                            },
+                            label = { Text(label, fontSize = 11.sp) }
                         )
                     }
                 }
@@ -964,10 +1249,10 @@ fun ResizeWorldDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(selectedPreset.first, selectedPreset.second) },
+                onClick = { onConfirm(cols, rows) },
                 modifier = Modifier.testTag("confirm_resize_world")
             ) {
-                Text("Apply")
+                Text("Apply Dimensions")
             }
         },
         dismissButton = {

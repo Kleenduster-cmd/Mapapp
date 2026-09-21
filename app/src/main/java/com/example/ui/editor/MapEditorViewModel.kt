@@ -42,7 +42,9 @@ data class EditorUiState(
     val canRedo: Boolean = false,
     val selectedPaletteTab: Int = 0, // 0 = Terrains, 1 = Objects
     val isSaved: Boolean = true,
-    val worldMapIdContext: Long? = null
+    val worldMapIdContext: Long? = null,
+    val isColorOnlyMode: Boolean = false,
+    val showLegendDialog: Boolean = false
 )
 
 class MapEditorViewModel(
@@ -401,6 +403,14 @@ class MapEditorViewModel(
             }
             autoSave()
         }
+    }
+
+    fun toggleColorOnlyMode() {
+        _uiState.update { it.copy(isColorOnlyMode = !it.isColorOnlyMode) }
+    }
+
+    fun setShowLegendDialog(show: Boolean) {
+        _uiState.update { it.copy(showLegendDialog = show) }
     }
 
     fun renameMap(newName: String) {

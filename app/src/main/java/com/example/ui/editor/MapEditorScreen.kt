@@ -32,13 +32,17 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
@@ -87,6 +91,7 @@ import com.example.data.model.GridTile
 import com.example.data.model.MapObjectType
 import com.example.data.model.TerrainType
 import com.example.ui.components.ExportMapDialog
+import com.example.ui.components.TileLegendDialog
 import com.example.ui.components.TileRenderer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,6 +107,7 @@ fun MapEditorScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showResizeDialog by remember { mutableStateOf(false) }
+    var showLegendDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var hoveredCell by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
@@ -177,6 +183,18 @@ fun MapEditorScreen(
                         Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
                     }
 
+                    // Tile Legend Button
+                    IconButton(
+                        onClick = { showLegendDialog = true },
+                        modifier = Modifier.testTag("legend_button")
+                    ) {
+                        Icon(
+                            Icons.Default.Palette,
+                            contentDescription = "Tile & Color Legend",
+                            tint = if (state.isColorOnlyMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
                     // Grid Toggle
                     IconButton(
                         onClick = { viewModel.toggleGrid() },
@@ -216,6 +234,22 @@ fun MapEditorScreen(
                                     }
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text("Tile & Color Legend") },
+                                leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showLegendDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (state.isColorOnlyMode) "Switch to Texture View" else "Switch to Color-Based View") },
+                                leadingIcon = { Icon(Icons.Default.ColorLens, contentDescription = null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.toggleColorOnlyMode()
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Rename Map") },
                                 leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
@@ -307,21 +341,55 @@ fun MapEditorScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Cell coordinate badge
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(16.dp)
+                    // Cell coordinate badge & Legend quick access
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(16.dp)
                         ) {
-                            val coordText = hoveredCell?.let { "X: ${it.first}, Y: ${it.second}" } ?: "Zoom: ${(state.zoom * 100).toInt()}%"
-                            Text(
-                                text = coordText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val coordText = hoveredCell?.let { "X: ${it.first}, Y: ${it.second}" } ?: "Zoom: ${(state.zoom * 100).toInt()}%"
+                                Text(
+                                    text = coordText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        // Legend & Color View Pill
+                        Surface(
+                            color = if (state.isColorOnlyMode) MaterialTheme.colorScheme.primaryContainer else Color.Black.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { showLegendDialog = true }
+                                .testTag("canvas_legend_pill")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Palette,
+                                    contentDescription = "Tile Legend",
+                                    tint = if (state.isColorOnlyMode) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (state.isColorOnlyMode) "Color Mode" else "Legend",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (state.isColorOnlyMode) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
 
@@ -367,6 +435,16 @@ fun MapEditorScreen(
     }
 
     // Dialogs
+    if (showLegendDialog) {
+        TileLegendDialog(
+            map = map,
+            isColorOnlyMode = state.isColorOnlyMode,
+            onToggleColorOnlyMode = { viewModel.toggleColorOnlyMode() },
+            onSelectTerrain = { viewModel.selectTerrain(it) },
+            onDismiss = { showLegendDialog = false }
+        )
+    }
+
     if (showExportDialog) {
         ExportMapDialog(
             map = map,
@@ -497,7 +575,8 @@ fun MapCanvas(
                         x = drawX,
                         y = drawY,
                         cellSize = effectiveCellSize,
-                        showGrid = state.showGrid
+                        showGrid = state.showGrid,
+                        colorOnlyMode = state.isColorOnlyMode
                     )
                 }
             }
@@ -785,38 +864,200 @@ fun ResizeGridDialog(
     onConfirm: (Int, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedPreset by remember { mutableStateOf(Pair(currentWidth, currentHeight)) }
-    val presets = listOf(
-        Pair(10, 10) to "Small (10×10)",
-        Pair(16, 16) to "Standard (16×16)",
-        Pair(20, 20) to "Large (20×20)",
-        Pair(24, 24) to "Epic (24×24)",
-        Pair(32, 32) to "Massive (32×32)"
+    var width by remember { mutableIntStateOf(currentWidth) }
+    var height by remember { mutableIntStateOf(currentHeight) }
+    var widthText by remember { mutableStateOf(currentWidth.toString()) }
+    var heightText by remember { mutableStateOf(currentHeight.toString()) }
+
+    fun updateWidth(newW: Int) {
+        val clamped = newW.coerceIn(2, 64)
+        width = clamped
+        widthText = clamped.toString()
+    }
+
+    fun updateHeight(newH: Int) {
+        val clamped = newH.coerceIn(2, 64)
+        height = clamped
+        heightText = clamped.toString()
+    }
+
+    val quickPresets = listOf(
+        Pair(8, 8) to "8×8",
+        Pair(12, 12) to "12×12",
+        Pair(16, 16) to "16×16",
+        Pair(20, 20) to "20×20",
+        Pair(24, 24) to "24×24",
+        Pair(32, 32) to "32×32"
     )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Resize Grid Dimensions") },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Handyman,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Custom Grid Dimensions")
+            }
+        },
         text = {
             Column {
                 Text(
-                    text = "Existing content outside the new dimensions will be cropped. New cells will be filled with grass.",
+                    text = "Adjust map width and height (2 to 64 tiles). Cells outside new dimensions will be cropped; new cells will be filled with grass.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                presets.forEach { (dims, label) ->
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Dimensions summary card
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { selectedPreset = dims }
-                            .padding(vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text(
+                            text = "Size: ${width} × ${height}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "${width * height} total tiles",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Width Stepper & Input
+                Text("Grid Width (Columns):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { updateWidth(width - 5) },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("-5", fontSize = 12.sp)
+                    }
+                    IconButton(
+                        onClick = { updateWidth(width - 1) },
+                        modifier = Modifier.testTag("width_minus_button")
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease width")
+                    }
+                    OutlinedTextField(
+                        value = widthText,
+                        onValueChange = {
+                            widthText = it
+                            it.toIntOrNull()?.let { w ->
+                                if (w in 2..64) width = w
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("width_input"),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    )
+                    IconButton(
+                        onClick = { updateWidth(width + 1) },
+                        modifier = Modifier.testTag("width_plus_button")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase width")
+                    }
+                    OutlinedButton(
+                        onClick = { updateWidth(width + 5) },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("+5", fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Height Stepper & Input
+                Text("Grid Height (Rows):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { updateHeight(height - 5) },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("-5", fontSize = 12.sp)
+                    }
+                    IconButton(
+                        onClick = { updateHeight(height - 1) },
+                        modifier = Modifier.testTag("height_minus_button")
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease height")
+                    }
+                    OutlinedTextField(
+                        value = heightText,
+                        onValueChange = {
+                            heightText = it
+                            it.toIntOrNull()?.let { h ->
+                                if (h in 2..64) height = h
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("height_input"),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    )
+                    IconButton(
+                        onClick = { updateHeight(height + 1) },
+                        modifier = Modifier.testTag("height_plus_button")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase height")
+                    }
+                    OutlinedButton(
+                        onClick = { updateHeight(height + 5) },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("+5", fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Quick presets
+                Text("Quick Presets:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(quickPresets) { (dims, label) ->
                         FilterChip(
-                            selected = selectedPreset == dims,
-                            onClick = { selectedPreset = dims },
-                            label = { Text(label) }
+                            selected = width == dims.first && height == dims.second,
+                            onClick = {
+                                updateWidth(dims.first)
+                                updateHeight(dims.second)
+                            },
+                            label = { Text(label, fontSize = 11.sp) }
                         )
                     }
                 }
@@ -824,10 +1065,10 @@ fun ResizeGridDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(selectedPreset.first, selectedPreset.second) },
+                onClick = { onConfirm(width, height) },
                 modifier = Modifier.testTag("confirm_resize_button")
             ) {
-                Text("Apply Resize")
+                Text("Apply Dimensions")
             }
         },
         dismissButton = {

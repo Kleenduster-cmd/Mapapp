@@ -67,6 +67,8 @@ fun ExportMapDialog(
     var selectedTab by remember { mutableIntStateOf(0) }
     var includeGridLines by remember { mutableStateOf(true) }
     var includeTitle by remember { mutableStateOf(true) }
+    var includeLegend by remember { mutableStateOf(true) }
+    var colorOnlyMode by remember { mutableStateOf(false) }
     var cellSize by remember { mutableIntStateOf(48) }
     var isExporting by remember { mutableStateOf(false) }
 
@@ -130,6 +132,26 @@ fun ExportMapDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Include Header Banner", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = includeLegend,
+                            onCheckedChange = { includeLegend = it },
+                            modifier = Modifier.testTag("checkbox_tile_legend")
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Include Tile Legend (Color-Coded)", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = colorOnlyMode,
+                            onCheckedChange = { colorOnlyMode = it },
+                            modifier = Modifier.testTag("checkbox_color_mode")
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Color-Based Style (Solid Color Blocks)", style = MaterialTheme.typography.bodyMedium)
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -197,7 +219,9 @@ fun ExportMapDialog(
                                     map = map,
                                     cellSize = cellSize,
                                     includeGridLines = includeGridLines,
-                                    includeTitle = includeTitle
+                                    includeTitle = includeTitle,
+                                    includeLegend = includeLegend,
+                                    colorOnlyMode = colorOnlyMode
                                 )
                                 val file = ImageExporter.saveBitmapToFile(context, bitmap, map.name)
                                 ImageExporter.shareImageFile(context, file, map.name)
@@ -279,6 +303,8 @@ fun ExportWorldMapDialog(
     var selectedTab by remember { mutableIntStateOf(0) }
     var includeGridLines by remember { mutableStateOf(false) }
     var includeBorders by remember { mutableStateOf(true) }
+    var includeLegend by remember { mutableStateOf(true) }
+    var colorOnlyMode by remember { mutableStateOf(false) }
     var cellSize by remember { mutableIntStateOf(32) }
     var isExporting by remember { mutableStateOf(false) }
 
@@ -343,6 +369,26 @@ fun ExportWorldMapDialog(
                         Text("Show Local Tile Grid", style = MaterialTheme.typography.bodyMedium)
                     }
 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = includeLegend,
+                            onCheckedChange = { includeLegend = it },
+                            modifier = Modifier.testTag("checkbox_world_legend")
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Include Tile & Color Legend", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = colorOnlyMode,
+                            onCheckedChange = { colorOnlyMode = it },
+                            modifier = Modifier.testTag("checkbox_world_color_mode")
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Color-Based Flat Style", style = MaterialTheme.typography.bodyMedium)
+                    }
+
                     Spacer(modifier = Modifier.height(10.dp))
                     Text("Tile Resolution:", style = MaterialTheme.typography.labelMedium)
                     Row(
@@ -389,7 +435,9 @@ fun ExportWorldMapDialog(
                                     connectedMaps = connectedMaps,
                                     sectorCellSize = cellSize,
                                     includeGridLines = includeGridLines,
-                                    includeSectorBorders = includeBorders
+                                    includeSectorBorders = includeBorders,
+                                    includeLegend = includeLegend,
+                                    colorOnlyMode = colorOnlyMode
                                 )
                                 val file = ImageExporter.saveBitmapToFile(context, bitmap, worldMap.name)
                                 ImageExporter.shareImageFile(context, file, worldMap.name)
