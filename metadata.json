@@ -1,0 +1,7 @@
+{
+  "name": "Map Maker",
+  "description": "Create grid-based tactical and adventure maps, assemble them into expansive world maps, and export them as PNG images or JSON files.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
