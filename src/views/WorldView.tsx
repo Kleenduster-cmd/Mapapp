@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Grid,
-  Layers,
   Globe,
   Plus,
   Edit,
@@ -11,7 +10,6 @@ import {
   Scaling,
   ZoomIn,
   ZoomOut,
-  Maximize2,
   Unlink,
   ExternalLink,
   X,
@@ -114,6 +112,8 @@ export const WorldView: React.FC<WorldViewProps> = ({
       baseCellSize,
       showBorders,
       isColorOnlyMode,
+      true,
+      false,
       centerOffsetX,
       centerOffsetY
     );

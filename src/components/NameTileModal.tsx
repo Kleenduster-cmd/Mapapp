@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tag, X, Check, Trash2, MapPin } from 'lucide-react';
+import { Tag, X, Check, Trash2 } from 'lucide-react';
 import { GridTile } from '../types';
 import { getTerrain, getMapObject } from '../constants/tiles';
 

@@ -81,7 +81,7 @@ export async function renderMapToBlob(map: GridMap, options: MapExportOptions): 
   const mapOffsetY = headerHeight;
 
   if (viewProjection === '2.5D') {
-    const { isoW, isoH } = get25DMetrics(cellSize);
+    const { isoW } = get25DMetrics(cellSize);
     const originX = (canvas.width / 2) + ((map.height - map.width) * (isoW / 4));
     const originY = mapOffsetY + 40;
 
@@ -224,6 +224,7 @@ export async function renderWorldToBlob(
     includeBorders,
     colorOnlyMode,
     includeLabels,
+    false,
     0,
     headerH
   );

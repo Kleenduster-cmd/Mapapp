@@ -447,7 +447,7 @@ const WorldCard: React.FC<WorldCardProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    renderSeamlessWorld(ctx, world, connectedMaps, cellSize, true, false, 0, 0);
+    renderSeamlessWorld(ctx, world, connectedMaps, cellSize, true, false, false, false, 0, 0);
   }, [world, connectedMaps]);
 
   return (

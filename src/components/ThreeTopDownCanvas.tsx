@@ -7,7 +7,6 @@ import {
   RotateCw,
   Maximize2,
   Mountain,
-  Layers,
   Camera,
   Compass,
 } from 'lucide-react';

@@ -5,7 +5,6 @@ import {
   Redo2,
   ZoomIn,
   ZoomOut,
-  Maximize2,
   Grid,
   Palette,
   Scaling,
@@ -20,14 +19,11 @@ import {
   Trash,
   Tag,
   Plus,
-  Sparkles,
   Mountain,
   Box,
-  Layers,
   ChevronsUp,
   ChevronsDown,
   TrendingUp,
-  TrendingDown,
   Minus,
 } from 'lucide-react';
 import {

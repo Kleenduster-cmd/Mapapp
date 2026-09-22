@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, X, Palette, Sparkles, Check } from 'lucide-react';
 import { TerrainDef, MapObjectDef } from '../types';
-import { drawTile } from '../utils/canvasRenderer';
 
 interface AddCustomTileModalProps {
   initialTab?: 'terrain' | 'object';
@@ -71,7 +70,7 @@ export const AddCustomTileModal: React.FC<AddCustomTileModalProps> = ({
   // Object Form State
   const [objectTitle, setObjectTitle] = useState('');
   const [iconEmoji, setIconEmoji] = useState('💎');
-  const [objectColor, setObjectColor] = useState('#E5E9F0');
+  const objectColor = '#E5E9F0';
 
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
 
@@ -87,7 +86,6 @@ export const AddCustomTileModal: React.FC<AddCustomTileModalProps> = ({
     canvas.height = s;
 
     if (mode === 'terrain') {
-      const mockTile = { terrain: 'preview_temp', obj: '' };
       // Temporarily mock renderer
       ctx.fillStyle = baseColor;
       ctx.fillRect(0, 0, s, s);

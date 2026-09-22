@@ -732,7 +732,7 @@ export function renderGridMap25D(
     offsetY = 0,
   } = options;
 
-  const { isoW, isoH, stepH, pedestalH } = get25DMetrics(cellSize);
+  const { isoW, isoH, pedestalH } = get25DMetrics(cellSize);
 
   // Center coordinate calculation
   // Total span in 2.5D:
