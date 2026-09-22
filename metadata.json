@@ -1,6 +1,6 @@
 {
   "name": "Map Maker",
-  "description": "Create grid-based tactical and adventure maps with 2.5D isometric projection and elevation sculpting, assemble them into expansive world maps, and export them as PNG images or JSON files.",
+  "description": "Create grid-based tactical and adventure maps with Three.js 2.5D top-down projection and elevation sculpting, assemble them into expansive world maps, and export them as PNG images or JSON files.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -66,6 +66,7 @@ import { ResizeMapModal } from '../components/ResizeMapModal';
 import { RenameModal } from '../components/RenameModal';
 import { NameTileModal } from '../components/NameTileModal';
 import { AddCustomTileModal } from '../components/AddCustomTileModal';
+import { ThreeTopDownCanvas } from '../components/ThreeTopDownCanvas';
 
 interface EditorViewProps {
   initialMap: GridMap;
@@ -89,7 +90,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   const [selectedObject, setSelectedObject] = useState<string>('');
   const [paletteTab, setPaletteTab] = useState<0 | 1 | 2>(0); // 0: Terrains, 1: Objects, 2: Elevation presets
 
-  // 2.5D Isometric & Elevation state
+  // View Projection: '2.5D' (Three.js Top-Down 2.5D with 3D elevation blocks) or '2D' (flat Top-Down canvas)
   const [viewProjection, setViewProjection] = useState<ViewProjection>('2.5D');
   const [elevationMode, setElevationMode] = useState<ElevationMode>('RAISE');
   const [targetElevation, setTargetElevation] = useState<number>(1);
@@ -100,6 +101,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   const [zoom, setZoom] = useState<number>(1);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [showGrid, setShowGrid] = useState<boolean>(true);
+  const [showIsoGrid, setShowIsoGrid] = useState<boolean>(true);
   const [showLabels, setShowLabels] = useState<boolean>(true);
   const [isColorOnlyMode, setIsColorOnlyMode] = useState<boolean>(false);
 
@@ -199,7 +201,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
       renderGridMap25D(ctx, map, {
         cellSize: effectiveCellSize,
-        showGrid,
+        showGrid: showIsoGrid,
         colorOnlyMode: isColorOnlyMode,
         showLabels,
         showElevation: showElevation || activeTool === 'ELEVATION',
@@ -281,6 +283,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
     map,
     panOffset,
     showGrid,
+    showIsoGrid,
     showLabels,
     showElevation,
     viewProjection,
@@ -634,6 +637,50 @@ export const EditorView: React.FC<EditorViewProps> = ({
     }
   };
 
+  // Handlers for ThreeTopDownCanvas interactions
+  const handleThreeTilePointerDown = (x: number, y: number) => {
+    if (activeTool === 'LABEL') {
+      const idx = y * map.width + x;
+      const tile = map.tiles[idx] || { terrain: 'grass', obj: '' };
+      setNamingTileTarget({ x, y, tile });
+      return;
+    }
+
+    if (activeTool === 'FILL_BUCKET') {
+      floodFill(x, y, map);
+      return;
+    }
+
+    isInteractingRef.current = true;
+    currentBatchRef.current = [];
+    lastCellRef.current = { x, y };
+
+    const newMap = applyBrushAt(x, y, map);
+    updateMapState(newMap);
+  };
+
+  const handleThreeTilePointerMove = (x: number, y: number) => {
+    if (!isInteractingRef.current) return;
+    if (lastCellRef.current && lastCellRef.current.x === x && lastCellRef.current.y === y) {
+      return;
+    }
+
+    lastCellRef.current = { x, y };
+    const newMap = applyBrushAt(x, y, map);
+    updateMapState(newMap);
+  };
+
+  const handleThreeTilePointerUp = () => {
+    if (isInteractingRef.current) {
+      isInteractingRef.current = false;
+      if (currentBatchRef.current.length > 0) {
+        setUndoStack(prev => [...prev.slice(-49), currentBatchRef.current]);
+        setRedoStack([]);
+      }
+      currentBatchRef.current = [];
+    }
+  };
+
   // Wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -759,6 +806,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
       if (e.key === 'v' || e.key === 'V') {
         setViewProjection(prev => (prev === '2D' ? '2.5D' : '2D'));
+      } else if (e.key === 'g' || e.key === 'G') {
+        if (viewProjection === '2.5D') {
+          setShowIsoGrid(prev => !prev);
+        } else {
+          setShowGrid(prev => !prev);
+        }
       } else if (e.key === 'h' || e.key === 'H') {
         setActiveTool('ELEVATION');
       } else if (e.key === 'b' || e.key === 'B') {
@@ -872,31 +925,33 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5">
-          {/* 2D / 2.5D Isometric Mode Switcher */}
+          {/* Top-Down / 2.5D Mode Switcher */}
           <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner mr-1">
             <button
-              onClick={() => setViewProjection('2D')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                viewProjection === '2D'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="2D Flat Top-Down View (Hotkey: V)"
-            >
-              <Grid className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">2D</span>
-            </button>
-            <button
+              id="view-threejs-btn"
               onClick={() => setViewProjection('2.5D')}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                 viewProjection === '2.5D'
                   ? 'bg-gradient-to-r from-indigo-600 to-sky-600 text-white shadow-md shadow-indigo-500/20'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="2.5D Isometric Diorama with Elevation Depth (Hotkey: V)"
+              title="2.5D Top-Down View with Three.js (Hotkey: V)"
             >
               <Box className="w-3.5 h-3.5 text-sky-300" />
-              <span>2.5D</span>
+              <span>2.5D Three.js</span>
+            </button>
+            <button
+              id="view-top-down-btn"
+              onClick={() => setViewProjection('2D')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                viewProjection === '2D'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="2D Top-Down View (Hotkey: V)"
+            >
+              <Grid className="w-3.5 h-3.5" />
+              <span>2D Top-Down</span>
             </button>
           </div>
 
@@ -912,16 +967,27 @@ export const EditorView: React.FC<EditorViewProps> = ({
             <Mountain className="w-4 h-4" />
           </button>
 
+          {/* Grid Lines Toggle Button */}
           <button
-            onClick={() => setShowGrid(prev => !prev)}
-            title="Toggle Grid Lines"
-            className={`p-1.5 rounded-lg border text-xs transition-colors ${
-              showGrid
+            id="toggle-grid-btn"
+            onClick={() => {
+              if (viewProjection === '2.5D') {
+                setShowIsoGrid(prev => !prev);
+              } else {
+                setShowGrid(prev => !prev);
+              }
+            }}
+            title={(viewProjection === '2.5D' ? showIsoGrid : showGrid) ? 'Hide Grid Lines (G)' : 'Show Grid Lines (G)'}
+            className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+              (viewProjection === '2.5D' ? showIsoGrid : showGrid)
                 ? 'border-indigo-500/50 bg-indigo-500/20 text-indigo-300'
-                : 'border-slate-800 text-slate-400 hover:bg-slate-800'
+                : 'border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
             }`}
           >
             <Grid className="w-4 h-4" />
+            <span className="text-[11px] font-medium hidden lg:inline">
+              {(viewProjection === '2.5D' ? showIsoGrid : showGrid) ? 'Grid On' : 'Grid Off'}
+            </span>
           </button>
 
           <button
@@ -992,6 +1058,21 @@ export const EditorView: React.FC<EditorViewProps> = ({
                   <span>Clear All Objects</span>
                 </button>
                 <button
+                  id="menu-toggle-grid-btn"
+                  onClick={() => {
+                    if (viewProjection === '2.5D') {
+                      setShowIsoGrid(prev => !prev);
+                    } else {
+                      setShowGrid(prev => !prev);
+                    }
+                    setShowMoreMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-700 text-left text-slate-300"
+                >
+                  <Grid className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{(viewProjection === '2.5D' ? showIsoGrid : showGrid) ? 'Hide Grid Lines' : 'Show Grid Lines'}</span>
+                </button>
+                <button
                   onClick={() => {
                     setIsColorOnlyMode(prev => !prev);
                     setShowMoreMenu(false);
@@ -1016,30 +1097,61 @@ export const EditorView: React.FC<EditorViewProps> = ({
       </header>
 
       {/* Center Canvas Area */}
-      <div
-        ref={containerRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onWheel={handleWheel}
-        onContextMenu={e => {
-          e.preventDefault();
-          const gridPos = screenToGrid(e.clientX, e.clientY);
-          if (
-            gridPos &&
-            gridPos.x >= 0 &&
-            gridPos.x < map.width &&
-            gridPos.y >= 0 &&
-            gridPos.y < map.height
-          ) {
-            const idx = gridPos.y * map.width + gridPos.x;
-            const tile = map.tiles[idx] || { terrain: 'grass', obj: '' };
-            setNamingTileTarget({ x: gridPos.x, y: gridPos.y, tile });
-          }
-        }}
-        className="flex-1 relative overflow-hidden cursor-crosshair touch-none"
-      >
-        <canvas ref={canvasRef} className="absolute inset-0" />
+      <div className="flex-1 relative overflow-hidden select-none w-full h-full">
+        {viewProjection === '2.5D' ? (
+          <ThreeTopDownCanvas
+            map={map}
+            activeTool={activeTool}
+            elevationMode={elevationMode}
+            targetElevation={targetElevation}
+            selectedTerrain={selectedTerrain}
+            selectedObject={selectedObject}
+            brushSize={brushSize}
+            showGrid={showGrid}
+            showElevation={showElevation}
+            showLabels={showLabels}
+            isColorOnlyMode={isColorOnlyMode}
+            isPanMode={isPanMode}
+            hoverCoord={hoverCoord}
+            onTilePointerDown={handleThreeTilePointerDown}
+            onTilePointerMove={handleThreeTilePointerMove}
+            onTilePointerUp={handleThreeTilePointerUp}
+            onHoverCoordChange={setHoverCoord}
+            onContextMenuTile={(x, y) => {
+              const idx = y * map.width + x;
+              const tile = map.tiles[idx] || { terrain: 'grass', obj: '' };
+              setNamingTileTarget({ x, y, tile });
+            }}
+            onToggleGrid={() => setShowGrid(prev => !prev)}
+            onToggleElevation={() => setShowElevation(prev => !prev)}
+          />
+        ) : (
+          <div
+            ref={containerRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onWheel={handleWheel}
+            onContextMenu={e => {
+              e.preventDefault();
+              const gridPos = screenToGrid(e.clientX, e.clientY);
+              if (
+                gridPos &&
+                gridPos.x >= 0 &&
+                gridPos.x < map.width &&
+                gridPos.y >= 0 &&
+                gridPos.y < map.height
+              ) {
+                const idx = gridPos.y * map.width + gridPos.x;
+                const tile = map.tiles[idx] || { terrain: 'grass', obj: '' };
+                setNamingTileTarget({ x: gridPos.x, y: gridPos.y, tile });
+              }
+            }}
+            className="w-full h-full relative overflow-hidden cursor-crosshair touch-none"
+          >
+            <canvas ref={canvasRef} className="absolute inset-0" />
+          </div>
+        )}
 
         {/* Floating Pan/Draw mode toggle pill */}
         <div className="absolute top-4 left-4 z-10 flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 shadow-lg backdrop-blur-md">
